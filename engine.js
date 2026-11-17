@@ -1,6 +1,6 @@
 // Acabou o dinheiro? — regras, simulação e motor do leilão (roda no navegador do anfitrião)
 // Ao mudar qualquer regra aqui, atualize também o livro de regras em rules.js
-import { PLAYERS } from './players.js';
+import { PLAYERS } from './db.js';
 
 export const POS_PT = { GK:'GOL', CB:'ZAG', LB:'LE', RB:'LD', LWB:'ALE', RWB:'ALD', CDM:'VOL', CM:'MC', CAM:'MEI', LM:'ME', RM:'MD', LW:'PE', RW:'PD', ST:'ATA', CF:'SA' };
 export const COLORS = ['#ffc833','#ff6b5a','#5ab0ff','#b98cff','#3ddc84','#ff9a3d','#ff7ac6','#7ae0e0','#d4e157','#a1887f'];
@@ -260,7 +260,7 @@ export function createCup(state) {
   const ids = state.teams.map(t => t.id);
   let format = state.settings.format;
   if (format === 'grupos' && ids.length < 6) format = 'liga';
-  const cup = { format, phase: null, ri: 0, ko: [], done: false, live: null, speed: 4 };
+  const cup = { format, phase: null, ri: 0, ko: [], done: false, live: null, speed: LIVE_DEFAULT };
   if (format === 'liga') { cup.phase = 'liga'; cup.rounds = roundRobin(ids, ids.length <= 4); cup.table = ids.map(emptyRow); }
   else if (format === 'mata') { cup.phase = 'ko'; cup.ko = [buildKO(shuffle(ids.slice()))]; }
   else {
@@ -295,7 +295,10 @@ export function nextTitle(state) {
 export function upcoming(state) { return currentRound(state).filter(m => m.h && m.a && !m.played); }
 
 /* Relógio da rodada ao vivo: 1x = 12 minutos reais para 90 minutos (dois tempos de 6 min) */
-const RATE_1X = 90 / 720000; export const HT_MS = 3500; export const SPEEDS_LIVE = [2, 4, 6];
+const RATE_1X = 90 / 720000; export const HT_MS = 3500;
+// ritmos: 6x = 2 min por jogo, 12x = 1 min (padrão), 24x = 30 s
+export const SPEEDS_LIVE = [6, 12, 24]; export const LIVE_DEFAULT = 12;
+export const LIVE_LABEL = { 6: '2 min/jogo', 12: '1 min/jogo', 24: '30 s/jogo' };
 function liveParts(l, now) {
   const rate = RATE_1X * l.speed, el = Math.max(0, now - l.at);
   if (l.base < 45) { const t1 = (45 - l.base) / rate; if (el < t1) return { m: l.base + el * rate, ht: false }; if (el < t1 + HT_MS) return { m: 45, ht: true }; return { m: Math.min(90, 45 + (el - t1 - HT_MS) * rate), ht: false }; }
@@ -311,7 +314,7 @@ export function startRound(state, now, speed) {
     if (!m.h || !m.a) { m.played = true; m.bye = true; m.w = m.h || m.a; return; }
     Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), cup.phase === 'ko', cup.phase === 'ko'));
   });
-  cup.live = { at: now, base: 0, speed: speed || cup.speed || 4, title: nextTitle(state), endAt: 0 };
+  cup.live = { at: now, base: 0, speed: speed || cup.speed || LIVE_DEFAULT, title: nextTitle(state), endAt: 0 };
 }
 export function setLiveSpeed(state, now, speed) {
   const l = state.cup && state.cup.live; if (!l) return;

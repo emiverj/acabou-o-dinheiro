@@ -64,6 +64,27 @@ export const KITS = {
   'Leeds United': K('#ffffff', '#ffcd00', '#1d428a'),
   'Celta': K('#8ac3ee', '#ffffff', '#0b2a4a'),
   'Base': K('#2f6b45', '#f3ecd8', '#f3ecd8', 'hoops'),
+  // Brasileirão
+  'Palmeiras': K('#006437', '#ffffff', '#ffffff'),
+  'Flamengo': K('#c4161c', '#111111', '#ffffff', 'hoops'),
+  'Cruzeiro': K('#1b3f94', '#ffffff', '#ffffff'),
+  'Corinthians': K('#ffffff', '#111111', '#111111'),
+  'Vasco': K('#111111', '#ffffff', '#ffffff', 'sash'),
+  'Botafogo': K('#111111', '#ffffff', '#ffffff', 'stripes'),
+  'Bahia': K('#ffffff', '#1d4fa0', '#d0202e'),
+  'Fluminense': K('#7a1c33', '#0b6b3a', '#ffffff', 'stripes'),
+  'Santos': K('#ffffff', '#111111', '#111111'),
+  'Atlético-MG': K('#ffffff', '#111111', '#111111', 'stripes'),
+  'Athletico-PR': K('#c8102e', '#111111', '#ffffff', 'stripes'),
+  'Bragantino': K('#ffffff', '#d0202e', '#d0202e'),
+  'São Paulo': K('#ffffff', '#d0202e', '#111111', 'hoops'),
+  'Grêmio': K('#0d80bf', '#111111', '#ffffff', 'stripes'),
+  'Internacional': K('#d0202e', '#ffffff', '#ffffff'),
+  'Vitória': K('#d0202e', '#111111', '#ffffff', 'stripes'),
+  'Coritiba': K('#ffffff', '#00544e', '#00544e', 'hoops'),
+  'Mirassol': K('#ffd200', '#0a7d3e', '#0a7d3e'),
+  'Remo': K('#0b1f4d', '#ffffff', '#ffffff'),
+  'Chapecoense': K('#0a8a3e', '#ffffff', '#ffffff'),
 };
 const DEFAULT = K('#3a4a42', '#f3ecd8', '#f3ecd8');
 
