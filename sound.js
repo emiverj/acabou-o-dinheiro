@@ -31,6 +31,10 @@ const S = {
     n.connect(f).connect(g).connect(master); n.start(t); },
   ooh(c) { const t = c.currentTime, n = noise(c, 1.2), f = c.createBiquadFilter(), g = c.createGain(); f.type = 'lowpass'; f.frequency.setValueAtTime(700, t); f.frequency.linearRampToValueAtTime(300, t + 1.1);
     g.gain.setValueAtTime(0.001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.2); g.gain.exponentialRampToValueAtTime(0.001, t + 1.2); n.connect(f).connect(g).connect(master); n.start(t); },
+  // alarme do relógio pós-leilão (a cada 30 s): dois bipes curtos, volume moderado
+  alarm(c) { const t = c.currentTime; [0, 0.22].forEach(d => { const o = c.createOscillator(), g = c.createGain(); o.type = 'square'; o.frequency.value = 1046;
+    g.gain.setValueAtTime(0.001, t + d); g.gain.exponentialRampToValueAtTime(0.07, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.001, t + d + 0.16);
+    o.connect(g).connect(master); o.start(t + d); o.stop(t + d + 0.18); }); },
   pop(c) { const t = c.currentTime, o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(600, t); o.frequency.exponentialRampToValueAtTime(1200, t + 0.08);
     g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.1); o.connect(g).connect(master); o.start(t); o.stop(t + 0.12); },
 };

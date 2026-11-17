@@ -5,9 +5,9 @@ import { PLAYERS_BR } from './players_br.js';
 import { PLAYERS_COPA } from './players_copa.js';
 
 export const MODES = {
-  europa: { name: 'Europa', icon: 'icons/europa.svg', list: EUROPA, desc: 'Cinco grandes ligas, Champions e Liga Europa' },
-  brasileirao: { name: 'Brasileirão', icon: 'icons/brasileirao.svg', list: PLAYERS_BR, desc: 'Os 20 clubes da Série A 2026' },
-  copa: { name: 'Copa do Mundo', icon: 'icons/copa.svg', list: PLAYERS_COPA, desc: 'Versões de jogadores de todas as Copas, de 1930 a 2026', versions: true },
+  europa: { name: 'Europa', icon: 'icons/europa.svg', list: EUROPA, tiers: [85, 89], desc: 'Cinco grandes ligas, Champions e Liga Europa' },
+  brasileirao: { name: 'Brasileirão', icon: 'icons/brasileirao.svg', list: PLAYERS_BR, tiers: [85, 89], desc: 'Os 20 clubes da Série A 2026' },
+  copa: { name: 'Copa do Mundo', icon: 'icons/copa.svg', list: PLAYERS_COPA, tiers: [88, 93], desc: 'Lendas de todas as Copas, de 1930 a 2026', versions: true },
 };
 export const BASES = Object.fromEntries(Object.entries(MODES).map(([k, m]) => [k, m.list]));
 export const BASE_NAMES = Object.fromEntries(Object.entries(MODES).map(([k, m]) => [k, m.name]));
@@ -18,4 +18,6 @@ export function setBase(b) {
   BASE = MODES[b] ? b : 'europa'; PLAYERS = BASES[BASE];
   if (typeof document !== 'undefined') document.body.dataset.mode = BASE;
 }
+// faixas de craque de cada modo: [lance mínimo de 5%, lance mínimo de 10%] (também usadas para cor da carta e pote)
+export const tiersOf = b => (MODES[b] || MODES.europa).tiers;
 export const ovrRange = b => { const o = MODES[b].list.map(p => p.o); return [Math.min(...o), Math.max(...o)]; };
