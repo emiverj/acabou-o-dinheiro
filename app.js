@@ -2,7 +2,7 @@
 import * as E from './engine.js';
 import { PLAYERS } from './players.js';
 import { openChannel, ONLINE, track } from './net.js';
-import { play, isMuted, setMuted } from './sound.js';
+import { play, isMuted, setMuted, playAcabou } from './sound.js';
 import { resultImage } from './share.js';
 import { rulesHTML } from './rules.js';
 import { jerseySVG } from './kits.js';
@@ -265,6 +265,13 @@ function leaveRoom() {
 function render() {
   updateBadge();
   if (!state) return renderHome();
+  // elenco fechado (vale também quando a última compra encerra o leilão)
+  const mt0 = myTeam();
+  if (mt0 && (state.phase === 'auction' || state.phase === 'lineup')) {
+    const left = mt0.squad.length ? E.slots(mt0) : 11;
+    if (ui.lastSlots != null && ui.lastSlots > 0 && left === 0) { playAcabou(); setTimeout(() => toast('Elenco fechado! Acabou o dinheiro?'), 1300); }
+    ui.lastSlots = left;
+  } else ui.lastSlots = null;
   const fn = { lobby: renderLobby, auction: renderAuction, lineup: renderLineup, cup: renderCup, end: renderEnd }[state.phase];
   fn && fn();
 }
@@ -532,6 +539,7 @@ function renderAuction() {
       if (w) play('gavel');
       if (w && w.id === me.id) toast(`${p.n} é seu por ${fmt(lot.price)}!`);
     } else if (lot.status === 'open') st.className = 'stamp';
+    checkBroke(lot, p, mt);
     const can = mt && lot.status === 'open' && !lot.auto && E.needFor(state, mt, p) && lot.leader !== mt.id;
     const lim = mt ? E.maxAllowed(mt) : 0, base = lot.leader ? lot.price : 0, mn = (mt && lot.status === 'open') ? E.minBid(state, mt) : 1;
     app.querySelectorAll('.bid[data-inc]').forEach(b => { const amt = Math.max(mn, base + +b.dataset.inc); b.querySelector('small').textContent = fmt(amt); b.disabled = !can || amt > lim; });
@@ -573,6 +581,17 @@ function renderAuction() {
   $('#top10').innerHTML = top.length ? top.map(row).join('') : '<li class="empty">Nenhuma venda ainda</li>';
   const last = hist.slice(-5).reverse();
   $('#last5').innerHTML = last.length ? last.map(row).join('') : '<li class="empty">O primeiro lote está no martelo</li>';
+}
+// Toca o "Acabou o dinheiro!" (só para o próprio técnico):
+// 1) aparece um jogador que ele precisa mas não tem saldo para o lance mínimo;
+// 2) o lance passa do teto dele; 3) ele fecha o elenco
+function checkBroke(lot, p, mt) {
+  if (!mt) return;
+  const left = E.slots(mt);
+  if (!lot || lot.status !== 'open' || lot.auto || left === 0 || !E.needFor(state, mt, p) || ui.brokeLot === lot.no) return;
+  const lim = E.maxAllowed(mt);
+  if (lim < E.floorFor(state, p)) { ui.brokeLot = lot.no; playAcabou(); toast(`Acabou o dinheiro! ${p.n} sai por no mínimo ${fmt(E.floorFor(state, p))}`); }
+  else if (lot.leader && lot.leader !== mt.id && lot.price + 1 > lim) { ui.brokeLot = lot.no; playAcabou(); toast(`Acabou o dinheiro! O lance passou do seu teto (${fmt(lim)})`); }
 }
 function bidInc(inc) {
   const lot = state && state.lot, mt = myTeam(); if (!lot || !mt) return;

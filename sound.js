@@ -34,4 +34,16 @@ const S = {
     g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.1); o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.12); },
 };
 export function play(name, arg) { if (muted) return; const c = ac(); if (!c || !S[name]) return; try { S[name](c, arg); } catch (e) {} }
-export function playFile(url, vol = 0.8) { if (muted) return; try { const a = new Audio(url); a.volume = vol; a.play().catch(() => {}); } catch (e) {} }
+const cache = {};
+// toca um arquivo de áudio; aceita uma lista de formatos e usa o primeiro que o navegador suporta
+export function playFile(urls, vol = 0.9) {
+  if (muted) return;
+  try {
+    const list = Array.isArray(urls) ? urls : [urls];
+    const key = list.join('|');
+    if (!cache[key]) { const probe = new Audio(); const url = list.find(u => probe.canPlayType(u.endsWith('.m4a') ? 'audio/mp4' : u.endsWith('.mp3') ? 'audio/mpeg' : 'audio/ogg')) || list[list.length - 1]; cache[key] = url; }
+    const a = new Audio(cache[key]); a.volume = vol; a.play().catch(() => {});
+  } catch (e) {}
+}
+// "Acabou o dinheiro!" — áudio do jogo
+export const playAcabou = () => playFile(['sons/acabou-o-dinheiro.m4a', 'sons/acabou-o-dinheiro.mp3']);
