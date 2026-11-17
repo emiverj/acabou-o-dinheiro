@@ -1,7 +1,9 @@
 // Acabou o dinheiro? — interface e sincronização
 import * as E from './engine.js';
 import { PLAYERS } from './players.js';
-import { openChannel, ONLINE } from './net.js';
+import { openChannel, ONLINE, track } from './net.js';
+import { play, isMuted, setMuted } from './sound.js';
+import { resultImage } from './share.js';
 import { rulesHTML } from './rules.js';
 import { jerseySVG } from './kits.js';
 import { createViewer } from './match.js';
@@ -32,7 +34,7 @@ const myTeam = () => state && state.teams.find(t => t.id === me.id);
 const teamById = id => state.teams.find(t => t.id === id);
 const hostNow = () => Date.now() + offset;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('on'), 2200); }
-function strip(s) { return JSON.parse(JSON.stringify(s, (k, v) => (k === '_ai' || k === 'pool') ? undefined : v)); }
+function strip(s) { return JSON.parse(JSON.stringify(s, (k, v) => k === '_ai' ? undefined : v)); }
 function genCode() { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let c = ''; for (let i = 0; i < 5; i++) c += a[Math.floor(Math.random() * a.length)]; return c; }
 const tn = id => { const t = teamById(id); return t ? `<span style="color:${t.color}">●</span> ${esc(t.name)}` : '<span style="color:var(--muted)">folga</span>'; };
 const posLabel = p => E.POS_PT[p.p] || p.p;
@@ -54,6 +56,10 @@ function updateBadge() {
 /* ---------- rede ---------- */
 function publish() {
   if (!isHost || !state) return;
+  if (state.phase === 'end' && state.cup && !state.cup.tracked) {
+    state.cup.tracked = true; const ch0 = teamById(state.cup.final[0]);
+    track('campeonato_finalizado', { sala: code, formato: state.cup.format, tecnicos: state.teams.length, humanos: state.teams.filter(t => !t.bot).length, campeao_bot: !!(ch0 && ch0.bot) });
+  }
   state.v++; state.hostNow = Date.now();
   if (ch) ch.send('state', strip(state));
   try { localStorage.setItem('acabou-host-' + code, JSON.stringify(state)); } catch (e) {}
@@ -66,7 +72,17 @@ function heartbeat() {
     lobbyCh.send('room', { code, name: state.teams[0].name, host: state.teams[0].coach, count: state.teams.length, max: state.settings.max, ts: Date.now() });
   }
 }
+let othersSeenAt = 0, pendingResume = null;
 function onMsg(ev, p) {
+  if (ev === 'react') { showReaction(p); return; }
+  if (ev === 'action' && !isHost) { if (p && p.id !== me.id) othersSeenAt = Date.now(); return; }
+  if (ev === 'state' && isHost) {
+    // dois anfitriões ao mesmo tempo: fica o de "mandato" mais novo (empate: menor id)
+    if (!p || p.code !== code || p.hostId === me.id) return;
+    const mine = state.epoch || 0, theirs = p.epoch || 0;
+    if (theirs > mine || (theirs === mine && String(p.hostId) < String(me.id))) stepDown(p);
+    return;
+  }
   if (ev === 'state' && !isHost) {
     if (!p || p.code !== code) return;
     if (state && p.hostNow < state.hostNow) return;
@@ -79,6 +95,38 @@ function onMsg(ev, p) {
     render();
   } else if (ev === 'action' && isHost) handleAction(p);
 }
+function stepDown(p) {
+  isHost = false; clearInterval(loopIv); clearInterval(hbIv);
+  state = p; offset = p.hostNow - Date.now(); lastSeen = Date.now();
+  if (ch) ch.send('action', { type: 'join', id: me.id, name: me.name, team: me.team });
+  toast('Outro técnico está conduzindo a sala'); render();
+}
+// Anfitrião substituto: se o anfitrião some, o primeiro técnico conectado da lista assume a sala
+function takeOver() {
+  const old = state.hostId, off = offset, now = Date.now();
+  const sh = v => (typeof v === 'number' && v > 1e12) ? v - off : v;
+  if (state.lot) { state.lot.endsAt = Math.max(sh(state.lot.endsAt), now + 4000); state.lot.closedAt = sh(state.lot.closedAt); }
+  if (state.cup && state.cup.live) { state.cup.live.at = sh(state.cup.live.at); state.cup.live.endAt = sh(state.cup.live.endAt); }
+  state.lineupEndsAt = sh(state.lineupEndsAt);
+  state.teams.forEach(t => { if (t.offSince) t.offSince = sh(t.offSince); });
+  state.seen = {}; state.teams.forEach(t => state.seen[t.id] = now);
+  const ot = teamById(old); if (ot && !ot.bot) { ot.offSince = now; state.seen[old] = now - 20000; }
+  state.hostId = me.id; state.epoch = (state.epoch || 0) + 1; state._ai = {};
+  if (!state.pool && state.phase === 'auction') { const used = new Set([...state.teams.flatMap(t => t.squad), ...(state.history || []).map(h => h.pid)]); state.pool = (state.poolIds || PLAYERS.map((_, i) => i)).filter(i => !used.has(i) && (!state.lot || state.lot.pid !== i)); }
+  if (state.log) E.addLog(state, `${(myTeam() || {}).coach || me.name} assumiu a sala como anfitrião`);
+  isHost = true; offset = 0; clearInterval(joinIv); joinIv = null;
+  try { localStorage.setItem('acabou-member-' + code, me.id); } catch (e) {}
+  startHostLoops(); publish(); toast('O anfitrião caiu: você está conduzindo a sala agora');
+}
+setInterval(() => {
+  if (isHost || !state || !ch || !code || pendingResume || !navigator.onLine) return;
+  const silent = Date.now() - lastSeen; if (silent < 9000) return;
+  const humans = state.teams.filter(t => !t.bot && !t.auto && !t.offSince && t.id !== state.hostId);
+  const rank = humans.findIndex(t => t.id === me.id); if (rank < 0) return;
+  // só assume se tiver sinal de que a própria conexão está boa (ou se não houver mais ninguém)
+  if (humans.length > 1 && Date.now() - othersSeenAt > 9000) return;
+  if (silent > 9000 + rank * 6000) takeOver();
+}, 1000);
 function act(a) { a.id = me.id; if (isHost) handleAction(a); else if (ch) ch.send('action', a); }
 
 const GRACE = 60000, OFFLINE_AFTER = 10000;
@@ -177,6 +225,7 @@ async function createRoom() {
   try { history.replaceState(null, '', '?sala=' + code); } catch (e) {}
   try { localStorage.setItem('acabou-member-' + code, me.id); } catch (e) {}
   startHostLoops(); publish();
+  track('sala_criada', { sala: code, formato: settings.format, orcamento: settings.budget, publica: settings.pub });
 }
 async function joinRoom(c, auto) {
   c = String(c || '').trim().toUpperCase();
@@ -190,7 +239,16 @@ async function joinRoom(c, auto) {
   try { member = localStorage.getItem('acabou-member-' + code); alive = +(localStorage.getItem('acabou-alive-' + code) || 0); } catch (e) {}
   // anfitrião reabrindo a sala em outra aba (se nenhuma outra aba estiver rodando a sala)
   if (saved && member && saved.hostId === member && saved.hostId !== me.id && Date.now() - alive > 5000) { me.id = member; try { sessionStorage.setItem('acabou-id', me.id); } catch (e) {} }
-  if (saved && saved.hostId === me.id) { state = saved; isHost = true; const n = Date.now(); state.seen = {}; state.teams.forEach(t => state.seen[t.id] = n); try { localStorage.setItem('acabou-member-' + code, me.id); } catch (e) {} startHostLoops(); publish(); return; }
+  if (saved && saved.hostId === me.id) {
+    pendingResume = saved; isHost = false; state = null; renderConnecting();
+    setTimeout(() => {
+      const sv = pendingResume; pendingResume = null;
+      if (state) { ch.send('action', { type: 'join', id: me.id, name: me.name, team: me.team }); toast('A sala continuou com outro anfitrião'); return; }
+      state = sv; isHost = true; const n = Date.now(); state.seen = {}; state.teams.forEach(t => state.seen[t.id] = n);
+      try { localStorage.setItem('acabou-member-' + code, me.id); } catch (e) {} startHostLoops(); publish();
+    }, 2500);
+    return;
+  }
   isHost = false; state = null; renderConnecting();
   if (!me.name) { me.name = 'Técnico ' + me.id.slice(0, 3); }
   const claim = member && member !== me.id ? member : null;
@@ -343,7 +401,7 @@ function renderLobby() {
       const used = state.teams.map(x => x.color); const idx = E.COLORS.findIndex(c => !used.includes(c));
       state.teams.push(E.mkTeam('bot-' + Math.random().toString(36).slice(2, 7), opt[1], opt[0], true, idx)); publish();
     };
-    $('#startA').onclick = () => { if (state.teams.length < 2) return; E.startAuction(state); publish(); };
+    $('#startA').onclick = () => { if (state.teams.length < 2) return; E.startAuction(state); publish(); track('leilao_iniciado', { sala: code, tecnicos: state.teams.length, humanos: state.teams.filter(t => !t.bot).length }); };
   } else hc.innerHTML = `<span class="lead" style="margin:0">Aguardando o anfitrião começar o leilão…</span>`;
   if (mt) {
     if (!$('#fsel select')) { $('#fsel').innerHTML = formationSelect('form', mt.formation); $('#form').onchange = e => act({ type: 'formation', formation: e.target.value }); }
@@ -418,6 +476,7 @@ function renderAuction() {
               <div class="custom"><input type="number" id="l-custom" min="1" placeholder="Outro valor (R$)"><button class="ghost" id="l-send">Dar lance</button><button class="pass" id="l-pass">Passar</button></div>
             </div>
             <div class="hint" id="l-hint"></div>
+            ${reactBar()}
           </div>
         </div>
         <div class="ffbar" id="ffbar"><span>Todos os times humanos estão completos. O resto roda sozinho.</span><button class="gold" id="ff">Pular para o fim</button></div>
@@ -461,12 +520,16 @@ function renderAuction() {
     $('#l-price').textContent = fmt(lot.leader ? lot.price : 0);
     const L = lot.leader && teamById(lot.leader);
     $('#l-leader').innerHTML = L ? `<i class="dot" style="background:${L.color}"></i>${esc(L.name)}${L.id === me.id ? ' (você)' : ''}` : '<span style="color:var(--muted)">Ninguém ainda</span>';
+    const bk = lot.no + ':' + lot.price + ':' + lot.leader;
+    if (lot.leader && lot.status === 'open' && bk !== ui.lastBidKey) play('bid');
+    ui.lastBidKey = bk;
     const key = lot.no + lot.status, st = $('#stamp');
     if (lot.status !== 'open' && key !== lastStampKey) {
       lastStampKey = key;
       const w = lot.winner && teamById(lot.winner);
       st.innerHTML = w ? `Vendido<small>${esc(w.name)} · ${fmt(lot.price)}</small>` : 'Sem lances<small>jogador fora do leilão</small>';
       st.className = 'stamp show' + (w ? (w.id === me.id ? ' mine' : '') : ' none');
+      if (w) play('gavel');
       if (w && w.id === me.id) toast(`${p.n} é seu por ${fmt(lot.price)}!`);
     } else if (lot.status === 'open') st.className = 'stamp';
     const can = mt && lot.status === 'open' && !lot.auto && E.needFor(state, mt, p) && lot.leader !== mt.id;
@@ -725,6 +788,7 @@ function renderLive(force) {
           <canvas id="pitch2d" class="pitch2d"></canvas>
           <div class="pens-live" id="pens-live"></div>
           <div class="chips-m" id="lv-matches"></div>
+          ${reactBar()}
           ${isHost ? `<div class="ctrl"><span class="lbl" style="align-self:center">Velocidade</span><div class="seg speeds">${E.SPEEDS_LIVE.map(s => `<button data-sp="${s}">${s}x</button>`).join('')}</div><button class="ghost" id="lv-skip">Pular para o fim da rodada</button></div>` : ''}
         </div>
         <div class="box"><h3>Lance a lance</h3><ul class="feed" id="lv-feed"></ul></div>
@@ -764,6 +828,9 @@ function liveTick(force) {
     const kicks = wm.shoot.slice(0, n); const ph = kicks.filter(k => k.s === 'h' && k.ok).length, pa = kicks.filter(k => k.s === 'a' && k.ok).length;
     pl.innerHTML = `<b>Pênaltis ${ph} × ${pa}</b> ${kicks.map(k => `<span class="${k.ok ? 'ok' : 'x'}" title="${pn(k.p)}">${k.ok ? '●' : '○'}</span>`).join('')}`;
   } else pl.innerHTML = '';
+  if (ui.sndRound !== l.at) { ui.sndRound = l.at; ui.wasHT = false; ui.ftDone = false; if (min < 1) play('whistle'); }
+  if (ht && !ui.wasHT) { ui.wasHT = true; play('whistle'); }
+  if (min >= 90 && !ui.ftDone) { ui.ftDone = true; play('whistle', true); }
   const step = Math.floor(min * 4);
   if (!force && step === lastNotif) return;
   // notificações: gols e lances importantes de todos os jogos; lance a lance do jogo assistido
@@ -772,6 +839,7 @@ function liveTick(force) {
     if (e.m > min || e.m <= prev) return;
     if (prev >= 0 && e.t === 'gol') toast((m === wm ? '⚽ ' : '⚽ ') + `${minTxt(e.m)} ${P(e.p).n} (${teamById(e.s === 'h' ? m.h : m.a).name})${e.kind !== 'jogada' ? ' ' + KIND[e.kind] : ''}`);
     if (prev >= 0 && e.t === 'penperdido') toast(`🧤 ${P(e.gk).n} pega pênalti!`);
+    if (prev >= 0 && m === wm) { if (e.t === 'gol') play('goal'); else if (e.t === 'penperdido' || e.t === 'defesa') play('ooh'); }
   }));
   $('#lv-feed').innerHTML = wm.ev.filter(e => e.m <= min).reverse().map(e => `<li class="ev-${e.t}">${evText(e, wm)}</li>`).join('') || '<li class="empty">Bola rolando…</li>';
   $('#lv-goals').innerHTML = ms.flatMap(m => m.ev.filter(e => (e.t === 'gol' || e.t === 'vermelho') && e.m <= min).map(e => ({ e, m }))).sort((x, y) => y.e.m - x.e.m).map(({ e, m }) => `<li>${evText(e, m)}</li>`).join('') || '<li class="empty">Nenhum gol ainda</li>';
@@ -822,7 +890,7 @@ function renderEnd() {
     <h2>Compartilhe</h2><div class="lead">Copie e mande no grupo.</div>
     <textarea class="share" id="e-share" readonly></textarea>
     ${sponsorHTML('mini')}
-    <div class="ctrl"><button class="gold" id="e-copy">Copiar resultado</button><button class="ghost" id="e-sq">Ver elencos</button>
+    <div class="ctrl"><button class="gold" id="e-img">📸 Imagem para story</button><button class="ghost" id="e-copy">Copiar resultado</button><button class="ghost" id="e-sq">Ver elencos</button>
       ${isHost ? '<button class="ghost" id="e-again">Nova partida (mesma sala)</button>' : ''}<button class="ghost" id="e-leave">Sair</button></div>
   </div>
   ${recordHTML()}`;
@@ -840,6 +908,15 @@ function renderEnd() {
   $('#e-copy').onclick = async () => { try { await navigator.clipboard.writeText($('#e-share').value); toast('Copiado!'); } catch (e) { $('#e-share').select(); toast('Selecionado: use Copiar'); } };
   $('#e-sq').onclick = showSquads;
   $('#e-leave').onclick = leaveRoom;
+  $('#e-img').onclick = async () => {
+    $('#e-img').disabled = true; toast('Gerando imagem…');
+    const blob = await resultImage(state, { champ, team: mt && mt.lineup ? mt : null, posTxt: mt ? posTxt(myPos) : '', top, best, rec: state.record && mt ? state.record[mt.id] : null });
+    $('#e-img').disabled = false; if (!blob) { toast('Não deu para gerar a imagem'); return; }
+    const file = new File([blob], 'acabou-o-dinheiro.png', { type: 'image/png' });
+    try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Acabou o dinheiro?' }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'acabou-o-dinheiro.png'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    toast('Imagem baixada!');
+  };
   fillMail();
   if (isHost) $('#e-again').onclick = () => {
     state.phase = 'lobby'; state.cup = null; state.lot = null; state.base = {}; state.log = []; state.history = []; state.penal = {};
@@ -847,6 +924,25 @@ function renderEnd() {
     publish();
   };
 }
+
+/* ---------- reações ---------- */
+const REACTS = ['😂', '💸', '🤡', '🔥', '😱', '👏'];
+let lastReact = 0;
+function reactBar() { return `<div class="reacts">${REACTS.map(e => `<button data-r="${e}" title="Reagir">${e}</button>`).join('')}</div>`; }
+function showReaction(p) {
+  if (!p || !REACTS.includes(p.e)) return;
+  let layer = $('#react-layer'); if (!layer) { layer = document.createElement('div'); layer.id = 'react-layer'; document.body.appendChild(layer); }
+  const el = document.createElement('div'); el.className = 'react-fly';
+  el.style.left = (12 + Math.random() * 76) + '%';
+  el.innerHTML = `<span>${p.e}</span><small style="color:${/^#[0-9a-f]{6}$/i.test(p.c || '') ? p.c : '#fff'}">${esc(String(p.n || '').slice(0, 22))}</small>`;
+  layer.appendChild(el); setTimeout(() => el.remove(), 2600); play('pop');
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-r]'); if (!b) return;
+  const now = Date.now(); if (now - lastReact < 700) return; lastReact = now;
+  const t = myTeam(); const p = { e: b.dataset.r, n: t ? t.name : me.name, c: t ? t.color : '' };
+  showReaction(p); if (ch) ch.send('react', p);
+});
 
 /* ---------- patrocínio e contato ---------- */
 const MAIL = ['mvferreirasilva', 'gmail.com'];
@@ -873,6 +969,9 @@ function applyPrefs() {
 $('#theme-btn').onclick = () => { try { localStorage.setItem('acabou-theme', document.body.classList.contains('light') ? 'dark' : 'light'); } catch (e) {} applyPrefs(); };
 $('#streamer-btn').onclick = () => { try { localStorage.setItem('acabou-streamer', document.body.classList.contains('streamer') ? '0' : '1'); } catch (e) {} applyPrefs(); toast(document.body.classList.contains('streamer') ? 'Modo streamer ligado: código da sala escondido' : 'Modo streamer desligado'); };
 applyPrefs();
+const syncMute = () => { $('#mute-btn').textContent = isMuted() ? '🔇' : '🔊'; $('#mute-btn').title = isMuted() ? 'Ligar sons' : 'Desligar sons'; };
+$('#mute-btn').onclick = () => { setMuted(!isMuted()); syncMute(); if (!isMuted()) play('bid'); };
+syncMute();
 function askName(cb) {
   $('#modal').innerHTML = `<div class="modal"><div class="inner" style="max-width:480px">
     <h2 style="margin-bottom:6px">Bem-vindo à sala</h2><div class="lead">Como você quer aparecer para os outros técnicos?</div>

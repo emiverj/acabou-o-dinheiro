@@ -26,6 +26,6 @@ export function rulesHTML(settings) {
     <li><b>Campeonato.</b> Pontos corridos: vitória 3, empate 1; desempate por saldo, gols pró e vitórias. Mata-mata: jogo único, empate vai para os pênaltis. Grupos + mata-mata (6 times ou mais): os 2 primeiros de cada grupo avançam. Com número ímpar de times, um time folga por rodada.</li>
     <li><b>Caiu a conexão?</b> Você tem <b>1 minuto</b> para voltar: reabra o link da sala no mesmo aparelho e navegador e você retoma o seu time, com elenco e dinheiro. Na sala de espera, quem não volta em 1 minuto sai da sala. Com o jogo em andamento, depois de 1 minuto o seu time entra no <b>piloto automático</b> (joga como um bot) até você voltar.</li>
     <li><b>Histórico da sala.</b> Jogando de novo na mesma sala, o jogo soma títulos, vices, vitórias, empates, derrotas e saldo de cada técnico ao longo das partidas.</li>
-    <li><b>Anfitrião.</b> Quem cria a sala roda o jogo para todos e precisa deixar a aba aberta até o fim. Se recarregar, a sala continua de onde parou.</li>
+    <li><b>Anfitrião.</b> Quem cria a sala roda o jogo para todos. Se o anfitrião cair, <b>o primeiro técnico conectado da lista assume a sala automaticamente</b> em cerca de 10 segundos, e a partida continua de onde parou. O antigo anfitrião volta como técnico normal (com 1 minuto de tolerância, como todo mundo).</li>
   </ol>`;
 }

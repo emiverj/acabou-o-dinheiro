@@ -438,3 +438,15 @@ body.light .sponsor .sp-body span{color:#3d4d42}
 body.light .modal .inner{background:#f3efe4}
 body.light .netbadge.on{color:#1f9d5a}
 body.light .toast{background:#14261b;color:#f3ecd8}
+
+/* ===== v5 ===== */
+.reacts{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.reacts button{background:var(--bg2);border:1px solid var(--line2);border-radius:999px;width:40px;height:36px;font-size:18px;line-height:1;transition:transform .1s}
+.reacts button:hover{transform:translateY(-2px) scale(1.08)}
+.reacts button:active{transform:scale(.92)}
+#react-layer{position:fixed;inset:0;pointer-events:none;z-index:15;overflow:hidden}
+.react-fly{position:absolute;bottom:8%;display:flex;flex-direction:column;align-items:center;animation:fly 2.6s ease-out forwards}
+.react-fly span{font-size:44px;filter:drop-shadow(0 4px 8px rgba(0,0,0,.4))}
+.react-fly small{font-weight:800;font-size:12px;background:rgba(0,0,0,.55);color:#fff;padding:2px 7px;border-radius:999px;margin-top:2px;white-space:nowrap}
+@keyframes fly{0%{transform:translateY(0) scale(.6);opacity:0}12%{opacity:1;transform:translateY(-30px) scale(1.1)}100%{transform:translateY(-55vh) scale(1);opacity:0}}
+body.streamer .react-fly span{font-size:60px}
