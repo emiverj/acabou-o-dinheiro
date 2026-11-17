@@ -162,10 +162,10 @@ function pickAssist(state, team, scorer) {
   return wpick(onField(state, team).filter(x => x.id !== scorer).map(x => ({ id: x.id, w: (ASSIST_ROLE[x.pos] || 0.5) * Math.pow(x.p.s[2] / 80, 3) * (hasK(x.p, 'Garçom') ? 1.4 : 1) })));
 }
 function takers(state, team) {
-  return onField(state, team).filter(x => x.pos !== 'GK').map(x => ({ id: x.id, v: x.p.s[1] + (hasK(x.p, 'Bola parada') ? 8 : 0) + (x.p.x === 'Batedor oficial' ? 15 : 0) })).sort((a, b) => b.v - a.v);
+  return onField(state, team).filter(x => x.pos !== 'GK').map(x => ({ id: x.id, v: x.p.s[1] + (hasK(x.p, 'Cobrador') ? 8 : 0) + (x.p.x === 'Batedor oficial' ? 15 : 0) })).sort((a, b) => b.v - a.v);
 }
 const CARD_ROLE = { CB:1.2, CDM:1.5, LB:1, RB:1, LWB:1, RWB:1, CM:0.9, CAM:0.5, LM:0.6, RM:0.6, LW:0.4, RW:0.4, ST:0.5, CF:0.5, GK:0.1 };
-function pickCard(state, team) { return wpick(onField(state, team).map(x => ({ id: x.id, w: (CARD_ROLE[x.pos] || 0.5) * (x.p.s[5] / 80) * (hasK(x.p, 'Xerife') || hasK(x.p, 'Trombador') ? 1.5 : 1) }))); }
+function pickCard(state, team) { return wpick(onField(state, team).map(x => ({ id: x.id, w: (CARD_ROLE[x.pos] || 0.5) * (x.p.s[5] / 80) * (hasK(x.p, 'Xerife') || hasK(x.p, 'Pivô') ? 1.5 : 1) }))); }
 const gkId = team => team.lineup[FORMATIONS[team.formation].findIndex(s => s.pos === 'GK')];
 
 export function playMatch(state, h, a, knockout, neutral) {
@@ -182,7 +182,7 @@ export function playMatch(state, h, a, knockout, neutral) {
       const r = Math.random(); let kind = 'jogada';
       if (r < 0.09) kind = 'penalti'; else if (r < 0.15) kind = 'falta'; else if (r < 0.31) kind = 'cabeca';
       let p, as = null;
-      if (kind === 'penalti' || kind === 'falta') { const tk = takers(state, team); p = (kind === 'falta' ? tk.find(x => hasK(getP(state, x.id), 'Bola parada')) || tk[0] : tk[0]).id; }
+      if (kind === 'penalti' || kind === 'falta') { const tk = takers(state, team); p = (kind === 'falta' ? tk.find(x => hasK(getP(state, x.id), 'Cobrador')) || tk[0] : tk[0]).id; }
       else p = pickScorer(state, team, kind === 'cabeca');
       if ((kind === 'jogada' || kind === 'cabeca') && Math.random() < 0.78) as = pickAssist(state, team, p);
       ev.push({ m: minute(), t: 'gol', s: side, kind, p, as });
