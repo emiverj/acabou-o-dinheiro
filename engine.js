@@ -260,7 +260,7 @@ export function playMatch(state, h, a, knockout, neutral) {
   for (const side of ['h', 'a']) {
     const team = T[side], conceded = side === 'h' ? ag : hg, res = m.w === team.id ? 0.35 : m.w ? -0.2 : 0.1;
     onField(state, team).forEach(x => {
-      let n = 6.4 + rnd(-0.3, 0.3) + res + (x.p.o - 84) * 0.05;
+      let n = 6.4 + rnd(-0.3, 0.3) + res + (x.p.o - (state.lo + state.hi) / 2 + 2) * 0.05;
       ev.forEach(e => {
         if (e.p === x.id && e.t === 'gol') n += 1;
         if (e.as === x.id) n += 0.6;
