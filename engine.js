@@ -1,0 +1,456 @@
+// Acabou o dinheiro? — regras, simulação e motor do leilão (roda no navegador do anfitrião)
+import { PLAYERS } from './players.js';
+
+export const POS_PT = { GK:'GOL', CB:'ZAG', LB:'LE', RB:'LD', LWB:'ALE', RWB:'ALD', CDM:'VOL', CM:'MC', CAM:'MEI', LM:'ME', RM:'MD', LW:'PE', RW:'PD', ST:'ATA', CF:'SA' };
+export const COLORS = ['#ffc833','#ff6b5a','#5ab0ff','#b98cff','#3ddc84','#ff9a3d','#ff7ac6','#7ae0e0','#d4e157','#a1887f'];
+export const BOT_NAMES = [['Ressaca EC','Prof. Zeca'],['Bola Murcha FC','Seu Juvenal'],['Canela Seca AC','Dona Cida'],['Real Várzea','Mister Tonhão'],['Atlético Resenha','Pardal'],['Unidos do Churrasco','Tia Neide'],['EC Fominha','Careca do Bar'],['Sport Club Galera','Prof. Xandão']];
+export const SPEEDS = { normal:{ open:10, reset:6, after:2200, ai:[500,1700] }, rapido:{ open:7, reset:4, after:1500, ai:[300,1100] } };
+
+/* ---------------- Formações (estilo EA FC) ---------------- */
+const BACK4 = [['LB',14,27],['CB',38,22],['CB',62,22],['RB',86,27]];
+const BACK3 = [['CB',26,22],['CB',50,19],['CB',74,22]];
+const BACK5W = [['LWB',9,36],['CB',30,22],['CB',50,19],['CB',70,22],['RWB',91,36]];
+const BACK5 = [['LB',9,32],['CB',30,22],['CB',50,19],['CB',70,22],['RB',91,32]];
+const GKS = [['GK',50,6]];
+const f = (...parts) => parts.flat().map(([pos,x,y]) => ({ pos, x, y }));
+export const FORMATIONS = {
+  '4-3-3':        f(GKS, BACK4, [['CM',28,50],['CM',50,46],['CM',72,50],['LW',17,77],['ST',50,85],['RW',83,77]]),
+  '4-3-3 (2)':    f(GKS, BACK4, [['CM',30,52],['CDM',50,40],['CM',70,52],['LW',17,77],['ST',50,85],['RW',83,77]]),
+  '4-3-3 (4)':    f(GKS, BACK4, [['CM',28,48],['CAM',50,60],['CM',72,48],['LW',17,78],['ST',50,86],['RW',83,78]]),
+  '4-4-2':        f(GKS, BACK4, [['LM',13,56],['CM',38,50],['CM',62,50],['RM',87,56],['ST',38,83],['ST',62,83]]),
+  '4-4-2 (2)':    f(GKS, BACK4, [['LM',13,58],['CDM',38,44],['CDM',62,44],['RM',87,58],['ST',38,83],['ST',62,83]]),
+  '4-2-3-1':      f(GKS, BACK4, [['CDM',37,42],['CDM',63,42],['CAM',20,64],['CAM',50,64],['CAM',80,64],['ST',50,86]]),
+  '4-2-3-1 (2)':  f(GKS, BACK4, [['CDM',37,42],['CDM',63,42],['LM',14,64],['CAM',50,64],['RM',86,64],['ST',50,86]]),
+  '4-1-2-1-2':    f(GKS, BACK4, [['CDM',50,38],['LM',16,55],['RM',84,55],['CAM',50,64],['ST',37,85],['ST',63,85]]),
+  '4-1-2-1-2 (2)':f(GKS, BACK4, [['CDM',50,38],['CM',30,52],['CM',70,52],['CAM',50,65],['ST',37,85],['ST',63,85]]),
+  '4-2-2-2':      f(GKS, BACK4, [['CDM',37,42],['CDM',63,42],['CAM',22,65],['CAM',78,65],['ST',37,85],['ST',63,85]]),
+  '4-1-4-1':      f(GKS, BACK4, [['CDM',50,38],['LM',13,58],['CM',37,55],['CM',63,55],['RM',87,58],['ST',50,85]]),
+  '4-5-1':        f(GKS, BACK4, [['LM',13,56],['CAM',34,63],['CM',50,46],['CAM',66,63],['RM',87,56],['ST',50,86]]),
+  '4-2-4':        f(GKS, BACK4, [['CM',37,48],['CM',63,48],['LW',13,76],['ST',37,85],['ST',63,85],['RW',87,76]]),
+  '3-5-2':        f(GKS, BACK3, [['CDM',37,42],['CDM',63,42],['LM',11,57],['CAM',50,63],['RM',89,57],['ST',37,85],['ST',63,85]]),
+  '3-4-3':        f(GKS, BACK3, [['LM',11,54],['CM',37,49],['CM',63,49],['RM',89,54],['LW',19,79],['ST',50,86],['RW',81,79]]),
+  '3-4-2-1':      f(GKS, BACK3, [['LM',11,52],['CM',37,47],['CM',63,47],['RM',89,52],['CAM',32,68],['CAM',68,68],['ST',50,87]]),
+  '5-3-2':        f(GKS, BACK5W, [['CM',28,52],['CM',50,47],['CM',72,52],['ST',37,84],['ST',63,84]]),
+  '5-2-1-2':      f(GKS, BACK5W, [['CM',35,48],['CM',65,48],['CAM',50,64],['ST',37,85],['ST',63,85]]),
+  '5-4-1':        f(GKS, BACK5, [['LM',13,57],['CM',37,52],['CM',63,52],['RM',87,57],['ST',50,85]]),
+};
+export const FORMATION_NAMES = Object.keys(FORMATIONS);
+
+/* ---------------- Jogadores ---------------- */
+export function getP(state, id) {
+  if (id >= 1000) return state.base[id];
+  return PLAYERS[id];
+}
+export const isGK = p => p.p === 'GK';
+
+const LINE = { GK:0, CB:1, LB:1, RB:1, LWB:1, RWB:1, CDM:2, CM:2, CAM:2, LM:2, RM:2, LW:3, RW:3, ST:3, CF:3 };
+const NEAR = { LB:['LWB','LM'], RB:['RWB','RM'], LWB:['LB','LM'], RWB:['RB','RM'], CB:['CDM'], CDM:['CM','CB'], CM:['CDM','CAM'],
+  CAM:['CM','CF','ST'], LM:['LW','LWB','CM'], RM:['RW','RWB','CM'], LW:['LM','ST'], RW:['RM','ST'], ST:['CF','CAM'], CF:['ST','CAM'] };
+export function fit(p, slot) {
+  if ((p.p === 'GK') !== (slot === 'GK')) return 0.35;
+  if (p.p === slot) return 1;
+  if (p.a.includes(slot)) return 0.97;
+  const near = NEAR[slot] || [];
+  if (near.includes(p.p) || p.a.some(a => near.includes(a))) return 0.9;
+  const d = Math.abs(LINE[p.p] - LINE[slot]);
+  return d === 0 ? 0.82 : d === 1 ? 0.72 : 0.6;
+}
+export function fitLevel(p, slot) { const v = fit(p, slot); return v >= 0.97 ? 'ok' : v >= 0.88 ? 'near' : 'bad'; }
+
+// pesos [RIT, FIN, PAS, DRI, DEF, FIS] por função (escondidos dos jogadores)
+const W = { ST:[.2,.45,.05,.15,0,.15], CF:[.15,.35,.15,.3,0,.05], LW:[.3,.2,.15,.35,0,0], RW:[.3,.2,.15,.35,0,0],
+  LM:[.25,.15,.25,.3,.05,0], RM:[.25,.15,.25,.3,.05,0], CAM:[.1,.25,.35,.3,0,0], CM:[.05,.1,.4,.25,.1,.1],
+  CDM:[.05,0,.25,.1,.4,.2], LB:[.3,0,.15,.1,.3,.15], RB:[.3,0,.15,.1,.3,.15], LWB:[.3,0,.2,.15,.25,.1], RWB:[.3,0,.2,.15,.25,.1], CB:[.1,0,.05,0,.6,.25] };
+export function slotScore(p, slot) {
+  if (slot === 'GK') return p.p === 'GK' ? p.o : p.o * 0.35;
+  if (p.p === 'GK') return 30;
+  const w = W[slot]; let d = 0; for (let i = 0; i < 6; i++) d += w[i] * p.s[i];
+  return (0.55 * d + 0.45 * p.o) * fit(p, slot);
+}
+
+/* Atribuição ótima (Húngaro) de 11 jogadores nas 11 vagas */
+function hungarian(cost) {
+  const n = cost.length, u = Array(n+1).fill(0), v = Array(n+1).fill(0), p = Array(n+1).fill(0), way = Array(n+1).fill(0);
+  for (let i = 1; i <= n; i++) {
+    p[0] = i; let j0 = 0; const minv = Array(n+1).fill(Infinity), used = Array(n+1).fill(false);
+    do {
+      used[j0] = true; const i0 = p[j0]; let delta = Infinity, j1 = 0;
+      for (let j = 1; j <= n; j++) if (!used[j]) {
+        const cur = cost[i0-1][j-1] - u[i0] - v[j];
+        if (cur < minv[j]) { minv[j] = cur; way[j] = j0; }
+        if (minv[j] < delta) { delta = minv[j]; j1 = j; }
+      }
+      for (let j = 0; j <= n; j++) { if (used[j]) { u[p[j]] += delta; v[j] -= delta; } else minv[j] -= delta; }
+      j0 = j1;
+    } while (p[j0] !== 0);
+    do { const j1 = way[j0]; p[j0] = p[j1]; j0 = j1; } while (j0);
+  }
+  const res = Array(n); for (let j = 1; j <= n; j++) res[p[j]-1] = j-1; return res; // res[row]=col
+}
+export function autoLineup(state, squad, formation) {
+  const slots = FORMATIONS[formation];
+  const ps = squad.map(id => getP(state, id));
+  const cost = slots.map(s => ps.map(p => -slotScore(p, s.pos)));
+  const a = hungarian(cost);
+  return slots.map((s, i) => squad[a[i]]);
+}
+
+/* Força por setor */
+const SECT = { ST:{a:1}, CF:{a:.9,m:.3}, LW:{a:.85,m:.2}, RW:{a:.85,m:.2}, LM:{a:.4,m:.7,d:.1}, RM:{a:.4,m:.7,d:.1},
+  CAM:{a:.55,m:.7}, CM:{a:.15,m:1,d:.2}, CDM:{m:.7,d:.6}, LB:{d:.9,m:.15,a:.1}, RB:{d:.9,m:.15,a:.1},
+  LWB:{d:.75,m:.25,a:.15}, RWB:{d:.75,m:.25,a:.15}, CB:{d:1}, GK:{d:.9} };
+const BASEVOL = { a:3.1, m:3.6, d:5.3 };
+export function strength(state, team) {
+  const slots = FORMATIONS[team.formation];
+  const acc = { a:[0,0], m:[0,0], d:[0,0] };
+  slots.forEach((s, i) => {
+    const p = getP(state, team.lineup[i]); const sc = slotScore(p, s.pos);
+    for (const k in SECT[s.pos]) { acc[k][0] += SECT[s.pos][k] * sc; acc[k][1] += SECT[s.pos][k]; }
+  });
+  const r = {};
+  for (const k of ['a','m','d']) { const q = acc[k][1] ? acc[k][0]/acc[k][1] : 60; r[k] = q + 5 * (acc[k][1]/BASEVOL[k] - 1); }
+  return r;
+}
+export function bestFormation(state, squad) {
+  let best = null;
+  for (const name of FORMATION_NAMES) {
+    const lineup = autoLineup(state, squad, name);
+    const st = strength(state, { formation:name, lineup });
+    const tot = st.a + st.m + st.d;
+    if (!best || tot > best.tot) best = { name, lineup, tot };
+  }
+  return best;
+}
+export function teamOvr(state, team) {
+  const ps = team.squad.map(id => getP(state, id)); return ps.reduce((s,p) => s + p.o, 0) / Math.max(1, ps.length);
+}
+
+/* ---------------- Utilidades ---------------- */
+export const rnd = (a, b) => a + Math.random() * (b - a);
+export const pick = a => a[Math.floor(Math.random() * a.length)];
+export const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+export const slots = t => 11 - t.squad.length;
+export const hasGK = (state, t) => t.squad.some(id => isGK(getP(state, id)));
+export const fieldCount = (state, t) => t.squad.filter(id => !isGK(getP(state, id))).length;
+export function needFor(state, t, p) { return isGK(p) ? !hasGK(state, t) : fieldCount(state, t) < 10; }
+export const maxAllowed = t => slots(t) > 0 ? t.budget - (slots(t) - 1) : 0;
+
+/* ---------------- Simulação de partidas ---------------- */
+function poisson(l) { const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= Math.random(); } while (p > L); return k - 1; }
+function pickScorer(state, team) {
+  const slots_ = FORMATIONS[team.formation];
+  const arr = slots_.map((s, i) => { const p = getP(state, team.lineup[i]); const a = (SECT[s.pos].a || 0) + 0.05;
+    return { id: team.lineup[i], w: s.pos === 'GK' ? 0 : a * Math.pow((p.p==='GK'?30:p.s[1]) / 80, 4) }; });
+  let r = Math.random() * arr.reduce((s, x) => s + x.w, 0);
+  for (const x of arr) { r -= x.w; if (r <= 0) return x.id; }
+  return arr[arr.length-1].id;
+}
+export function playMatch(state, h, a, knockout, neutral) {
+  const sh = strength(state, h), sa = strength(state, a);
+  const pow = s => 0.65 * s.a + 0.35 * s.m, wall = s => 0.7 * s.d + 0.3 * s.m;
+  const lh = Math.min(4.2, Math.max(.2, (neutral?1.28:1.38) * Math.exp(0.1 * (pow(sh) - wall(sa)))));
+  const la = Math.min(4.2, Math.max(.2, (neutral?1.28:1.16) * Math.exp(0.1 * (pow(sa) - wall(sh)))));
+  const hg = poisson(lh), ag = poisson(la);
+  const m = { h: h.id, a: a.id, hg, ag, sh: [], sa: [], played: true };
+  for (let i = 0; i < hg; i++) m.sh.push(pickScorer(state, h));
+  for (let i = 0; i < ag; i++) m.sa.push(pickScorer(state, a));
+  if (knockout && hg === ag) {
+    const k = (t, o) => 0.75 + (strength(state, t).a - strength(state, o).d) * 0.004;
+    let ph = 0, pa = 0;
+    for (let i = 0; i < 5; i++) { if (Math.random() < k(h, a)) ph++; if (Math.random() < k(a, h)) pa++; }
+    while (ph === pa) { ph += Math.random() < k(h, a); pa += Math.random() < k(a, h); }
+    m.pens = [ph, pa];
+  }
+  m.w = hg > ag ? h.id : ag > hg ? a.id : m.pens ? (m.pens[0] > m.pens[1] ? h.id : a.id) : null;
+  return m;
+}
+
+/* ---------------- Campeonato ---------------- */
+function roundRobin(ids, doubleLeg) {
+  const arr = shuffle(ids.slice()); if (arr.length % 2) arr.push(null);
+  const n = arr.length, rounds = [];
+  for (let r = 0; r < n - 1; r++) {
+    const ms = [];
+    for (let i = 0; i < n / 2; i++) { const x = arr[i], y = arr[n-1-i]; if (x && y) ms.push(r % 2 ? { h:y, a:x } : { h:x, a:y }); }
+    rounds.push(ms); arr.splice(1, 0, arr.pop());
+  }
+  return doubleLeg ? rounds.concat(rounds.map(ms => ms.map(m => ({ h:m.a, a:m.h })))) : rounds;
+}
+const emptyRow = id => ({ id, j:0, v:0, e:0, d:0, gp:0, gc:0, pts:0 });
+export function koName(n) { return ({2:'Final',4:'Semifinal',8:'Quartas de final',16:'Oitavas de final'})[n] || 'Mata-mata'; }
+function buildKO(seeded) { // seeded: lista ordenada do melhor para o pior
+  let size = 1; while (size < seeded.length) size *= 2;
+  const arr = seeded.slice(); while (arr.length < size) arr.push(null);
+  // chaveamento por sementes: 1 x último, 2 x penúltimo...
+  const ms = []; for (let i = 0; i < size / 2; i++) ms.push({ h: arr[i], a: arr[size-1-i] });
+  return ms;
+}
+export function sortTable(state, rows) {
+  return rows.slice().sort((x, y) => y.pts - x.pts || (y.gp - y.gc) - (x.gp - x.gc) || y.gp - x.gp || y.v - x.v
+    || teamOvr(state, state.teams.find(t => t.id === y.id)) - teamOvr(state, state.teams.find(t => t.id === x.id)));
+}
+export function createCup(state) {
+  const ids = state.teams.map(t => t.id);
+  let format = state.settings.format;
+  if (format === 'grupos' && ids.length < 6) format = 'liga';
+  const cup = { format, phase: null, ri: 0, ko: [], log: [], done: false };
+  if (format === 'liga') {
+    cup.phase = 'liga'; cup.rounds = roundRobin(ids, ids.length <= 4); cup.table = ids.map(emptyRow);
+  } else if (format === 'mata') {
+    cup.phase = 'ko'; cup.ko = [buildKO(shuffle(ids.slice()))];
+  } else {
+    cup.phase = 'grupos';
+    const g = Math.ceil(ids.length / 4), sh = shuffle(ids.slice());
+    cup.groups = Array.from({ length: g }, (_, i) => ({ name: 'Grupo ' + 'ABCDEFGH'[i], teams: [] }));
+    sh.forEach((id, i) => cup.groups[i % g].teams.push(id));
+    cup.groups.forEach(gr => { gr.rounds = roundRobin(gr.teams, false); gr.table = gr.teams.map(emptyRow); });
+    cup.groupRounds = Math.max(...cup.groups.map(gr => gr.rounds.length));
+  }
+  return cup;
+}
+function applyTable(table, m) {
+  const A = table.find(r => r.id === m.h), B = table.find(r => r.id === m.a);
+  A.j++; B.j++; A.gp += m.hg; A.gc += m.ag; B.gp += m.ag; B.gc += m.hg;
+  if (m.hg > m.ag) { A.v++; B.d++; A.pts += 3; } else if (m.hg < m.ag) { B.v++; A.d++; B.pts += 3; } else { A.e++; B.e++; A.pts++; B.pts++; }
+}
+const T = (state, id) => state.teams.find(t => t.id === id);
+// joga a próxima rodada; devolve título da rodada jogada
+export function advanceCup(state) {
+  const cup = state.cup; if (cup.done) return;
+  if (cup.phase === 'liga') {
+    const ms = cup.rounds[cup.ri];
+    ms.forEach(m => { Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), false)); applyTable(cup.table, m); });
+    cup.last = { title: `Rodada ${cup.ri + 1} de ${cup.rounds.length}`, matches: ms };
+    cup.ri++;
+    if (cup.ri >= cup.rounds.length) finishCup(state, sortTable(state, cup.table).map(r => r.id));
+    return;
+  }
+  if (cup.phase === 'grupos') {
+    const played = [];
+    cup.groups.forEach(gr => { const ms = gr.rounds[cup.ri] || []; ms.forEach(m => { Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), false)); applyTable(gr.table, m); m.g = gr.name; played.push(m); }); });
+    cup.last = { title: `Fase de grupos · rodada ${cup.ri + 1} de ${cup.groupRounds}`, matches: played };
+    cup.ri++;
+    if (cup.ri >= cup.groupRounds) {
+      const firsts = [], seconds = [];
+      cup.groups.forEach(gr => { const st = sortTable(state, gr.table); firsts.push(st[0]); seconds.push(st[1]); });
+      const rank = rows => sortTable(state, rows).map(r => r.id);
+      // cruzamento: 1º de um grupo enfrenta 2º de outro
+      const f1 = rank(firsts), s2 = rank(seconds);
+      let seeded = f1.concat(s2);
+      if (cup.groups.length === 2) { cup.ko = [[{ h: f1[0], a: s2.find(id => id !== f1[0] && !sameGroup(cup, id, f1[0])) || s2[1] }, { h: f1[1], a: s2.find(id => !sameGroup(cup, id, f1[1])) || s2[0] }]]; }
+      else cup.ko = [buildKO(seeded)];
+      cup.phase = 'ko'; cup.ri = 0;
+    }
+    return;
+  }
+  if (cup.phase === 'ko') {
+    const ms = cup.ko[cup.ko.length - 1];
+    const size = ms.length * 2;
+    ms.forEach(m => {
+      if (m.played) return;
+      if (!m.h || !m.a) { m.played = true; m.bye = true; m.w = m.h || m.a; return; }
+      Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), true, true));
+    });
+    cup.last = { title: koName(size), matches: ms.filter(m => !m.bye) };
+    if (ms.length === 1) {
+      const f = ms[0]; const champ = f.w, vice = f.w === f.h ? f.a : f.h;
+      const semis = cup.ko.length > 1 ? cup.ko[cup.ko.length - 2].filter(m => !m.bye).map(m => m.w === m.h ? m.a : m.h) : [];
+      const rest = state.teams.map(t => t.id).filter(id => id !== champ && id !== vice && !semis.includes(id));
+      finishCup(state, [champ, vice, ...semis, ...rest]);
+    } else {
+      const w = ms.map(m => m.w), nr = []; for (let i = 0; i < w.length; i += 2) nr.push({ h: w[i], a: w[i+1] });
+      cup.ko.push(nr);
+    }
+  }
+}
+function sameGroup(cup, a, b) { return cup.groups.some(g => g.teams.includes(a) && g.teams.includes(b)); }
+function finishCup(state, order) { state.cup.done = true; state.cup.final = order; state.phase = 'end'; }
+export function nextTitle(state) {
+  const cup = state.cup; if (!cup || cup.done) return '';
+  if (cup.phase === 'liga') return `Rodada ${cup.ri + 1}`;
+  if (cup.phase === 'grupos') return `Grupos · rodada ${cup.ri + 1}`;
+  return koName(cup.ko[cup.ko.length - 1].length * 2);
+}
+export function upcoming(state) {
+  const cup = state.cup; if (!cup || cup.done) return [];
+  if (cup.phase === 'liga') return cup.rounds[cup.ri];
+  if (cup.phase === 'grupos') return cup.groups.flatMap(gr => (gr.rounds[cup.ri] || []).map(m => ({ ...m, g: gr.name })));
+  return cup.ko[cup.ko.length - 1].filter(m => !m.played);
+}
+export function allMatches(state) {
+  const cup = state.cup; if (!cup) return [];
+  const out = [];
+  if (cup.rounds) cup.rounds.flat().forEach(m => m.played && out.push(m));
+  if (cup.groups) cup.groups.forEach(g => g.rounds.flat().forEach(m => m.played && out.push(m)));
+  cup.ko.flat().forEach(m => m.played && !m.bye && out.push(m));
+  return out;
+}
+export function topScorers(state, n) {
+  const c = new Map();
+  allMatches(state).forEach(m => {
+    m.sh.forEach(id => { const k = id + '|' + m.h; c.set(k, (c.get(k) || 0) + 1); });
+    m.sa.forEach(id => { const k = id + '|' + m.a; c.set(k, (c.get(k) || 0) + 1); });
+  });
+  return [...c.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, g]) => { const [id, team] = k.split('|'); return { id: +id, team, g }; });
+}
+
+/* ---------------- Motor do leilão (anfitrião) ---------------- */
+export function newRoomState(code, host, settings) {
+  return { v: 0, code, hostId: host.id, phase: 'lobby', settings, teams: [mkTeam(host.id, host.name, host.team, false, 0)],
+    lot: null, lotNo: 0, pool: null, log: [], base: {}, cup: null, lineupEndsAt: 0 };
+}
+export function mkTeam(id, coach, name, bot, idx) {
+  return { id, coach, name: name || ('FC ' + coach), bot, color: COLORS[idx % COLORS.length], budget: 100, squad: [], formation: '4-3-3', lineup: null, ready: false, pers: bot ? botPersona() : null };
+}
+function botPersona() { return pick([{ n:'Gastador', k:1.3 }, { n:'Pão-duro', k:0.78 }, { n:'Equilibrado', k:1 }, { n:'Caçador de craques', k:0, star:true }, { n:'Apostador', k:0, wild:true }]); }
+
+export function startAuction(state) {
+  const pool = PLAYERS.map((_, i) => i);
+  state.pool = pool; state.phase = 'auction'; state.lotNo = 0; state.log = [];
+  state.teams.forEach(t => { t.budget = state.settings.budget; t.squad = []; t.lineup = null; t.ready = false; t.paid = {}; });
+  if (state.teams.some(t => t.bot)) state.teams.forEach(t => { if (t.bot) t.formation = pick(['4-3-3','4-2-3-1','4-4-2','4-3-3 (2)','3-5-2','4-1-2-1-2 (2)']); });
+  const ovr = PLAYERS.map(p => p.o); state.lo = Math.min(...ovr); state.hi = Math.max(...ovr);
+}
+export function addLog(state, msg) { state.log.unshift(msg); if (state.log.length > 14) state.log.length = 14; }
+
+function botMax(state, t, p) {
+  if (!needFor(state, t, p)) return 0;
+  const s = slots(t), per = t.budget / s;
+  const r = Math.max(0, (p.o - state.lo) / Math.max(1, state.hi - state.lo));
+  const avg = state.settings.budget / 11;
+  let v = 1 + Math.pow(r, 2) * avg * 4.2;
+  v *= Math.min(1.9, Math.max(.35, per / avg));
+  let k = t.pers.k; if (t.pers.star) k = r >= .6 ? 1.5 : .8; if (t.pers.wild) k = rnd(.65, 1.55);
+  v *= k * rnd(.82, 1.2);
+  // encaixe na formação do bot
+  const slotsF = FORMATIONS[t.formation].map(s => s.pos);
+  const bestFit = Math.max(...slotsF.map(sp => fit(p, sp)));
+  const sameLine = slotsF.filter(sp => LINE[sp] === LINE[p.p]).length;
+  const have = t.squad.map(id => getP(state, id)).filter(q => LINE[q.p] === LINE[p.p]).length;
+  if (!isGK(p)) { v *= bestFit >= .97 ? 1.05 : .85; if (have >= sameLine) v *= .55; }
+  return Math.max(1, Math.min(Math.round(v), maxAllowed(t)));
+}
+export function chooseLot(state, now) {
+  if (state.teams.every(t => slots(t) === 0)) return false;
+  const needGK = state.teams.filter(t => slots(t) > 0 && !hasGK(state, t)).length;
+  const needField = state.teams.reduce((s, t) => s + Math.max(0, 10 - fieldCount(state, t)), 0);
+  const gks = state.pool.filter(id => isGK(PLAYERS[id])), fields = state.pool.filter(id => !isGK(PLAYERS[id]));
+  let wantGK = needGK > 0 && (needField === 0 || Math.random() < needGK / (needGK + needField) * 1.15);
+  let cands = wantGK ? gks : fields; if (!cands.length) cands = wantGK ? fields : gks;
+  cands = cands.filter(id => state.teams.some(t => slots(t) > 0 && needFor(state, t, PLAYERS[id])));
+  if (!cands.length) return false;
+  const pid = pick(cands); state.pool.splice(state.pool.indexOf(pid), 1); state.lotNo++;
+  const sp = SPEEDS[state.settings.speed];
+  state.lot = { no: state.lotNo, pid, price: 0, leader: null, endsAt: now + sp.open * 1000, status: 'open', passed: [] };
+  state._ai = {}; state.teams.forEach(t => { if (t.bot) state._ai[t.id] = { max: botMax(state, t, PLAYERS[pid]), next: now + rnd(900, 2600) }; });
+  const humansIn = state.teams.filter(t => !t.bot && needFor(state, t, PLAYERS[pid]) && maxAllowed(t) >= 1);
+  state.lot.auto = humansIn.length === 0;
+  if (state.lot.auto) state.lot.endsAt = now + (state.teams.some(t => !t.bot && slots(t) > 0) ? 1400 : 700);
+  return true;
+}
+export function placeBid(state, teamId, amount, now) {
+  const lot = state.lot; if (!lot || lot.status !== 'open') return 'Lote encerrado';
+  const t = state.teams.find(x => x.id === teamId); if (!t) return 'Time inválido';
+  const p = PLAYERS[lot.pid];
+  if (lot.leader === teamId) return 'Você já está na frente';
+  if (!needFor(state, t, p)) return isGK(p) ? 'Você já tem goleiro' : 'Seu elenco de linha está completo';
+  const min = lot.leader ? lot.price + 1 : 1;
+  if (amount < min) return 'Lance abaixo do mínimo';
+  if (amount > maxAllowed(t)) return 'Acima do seu limite';
+  lot.price = amount; lot.leader = teamId; lot.passed = lot.passed.filter(id => id !== teamId);
+  const sp = SPEEDS[state.settings.speed];
+  lot.endsAt = Math.max(lot.endsAt, now + sp.reset * 1000);
+  if (state._ai) for (const id in state._ai) if (id !== teamId && state._ai[id].next !== Infinity) state._ai[id].next = Math.max(state._ai[id].next, now + rnd(...sp.ai));
+  return null;
+}
+function sealed(state) {
+  const lot = state.lot, p = PLAYERS[lot.pid]; const bids = [];
+  state.teams.forEach(t => {
+    if (!t.bot) { if (lot.leader === t.id) bids.push({ id: t.id, max: lot.price }); return; }
+    if (!needFor(state, t, p)) return;
+    const m = Math.min(state._ai[t.id].max, maxAllowed(t));
+    const floor = lot.leader === t.id ? lot.price : lot.price + 1;
+    if (lot.leader === t.id) bids.push({ id: t.id, max: Math.max(m, lot.price) }); else if (m >= floor) bids.push({ id: t.id, max: m });
+  });
+  if (!bids.length) return { id: null, price: 0 };
+  shuffle(bids).sort((a, b) => b.max - a.max);
+  const w = bids[0], floor = lot.leader === w.id ? lot.price : lot.price + 1;
+  const price = bids.length === 1 ? Math.max(1, floor) : Math.min(w.max, Math.max(floor, bids[1].max + 1));
+  return { id: w.id, price: Math.max(1, price) };
+}
+export function passLot(state, teamId) {
+  const lot = state.lot; if (!lot || lot.status !== 'open' || lot.leader === teamId) return;
+  if (!lot.passed.includes(teamId)) lot.passed.push(teamId);
+}
+function closeLot(state, winnerId, price, now) {
+  const lot = state.lot, p = PLAYERS[lot.pid];
+  lot.status = winnerId ? 'sold' : 'nosale'; lot.winner = winnerId; lot.price = price; lot.closedAt = now;
+  if (winnerId) {
+    const t = state.teams.find(x => x.id === winnerId); t.budget -= price; t.squad.push(lot.pid); t.paid[lot.pid] = price;
+    addLog(state, `${p.n} → ${t.name} por R$ ${price}`);
+  } else addLog(state, `${p.n} ficou sem lance`);
+}
+// chamado a cada ~200ms no anfitrião; devolve true se o estado mudou
+export function tickAuction(state, now) {
+  if (state.phase !== 'auction') return false;
+  const lot = state.lot, sp = SPEEDS[state.settings.speed];
+  if (!lot || lot.status !== 'open') {
+    const fast = state.teams.every(t => t.bot || slots(t) === 0);
+    if (!lot || now - lot.closedAt > (lot && lot.auto ? (fast ? 500 : 1100) : sp.after)) {
+      if (!chooseLot(state, now)) { endAuction(state); }
+      return true;
+    }
+    return false;
+  }
+  // todos os humanos que podem disputar passaram → resolve na hora
+  const humansIn = state.teams.filter(t => !t.bot && needFor(state, t, PLAYERS[lot.pid]) && maxAllowed(t) >= 1);
+  const allPassed = humansIn.length > 0 && humansIn.every(t => lot.passed.includes(t.id)) && !humansIn.some(t => t.id === lot.leader);
+  if (lot.auto || allPassed) {
+    if (lot.auto && now < lot.endsAt) return false;
+    const r = sealed(state); closeLot(state, r.id, r.price, now); return true;
+  }
+  let changed = false;
+  for (const t of state.teams) {
+    if (!t.bot || lot.leader === t.id) continue;
+    const a = state._ai[t.id]; if (now < a.next) continue;
+    const min = lot.leader ? lot.price + 1 : 1, cap = Math.min(a.max, maxAllowed(t));
+    if (cap >= min && needFor(state, t, PLAYERS[lot.pid])) {
+      let inc = 1; const gap = cap - min;
+      if (gap > 10 && Math.random() < .45) inc = pick([2,3,5]);
+      if (gap > 22 && Math.random() < .25) inc = pick([5,10]);
+      placeBid(state, t.id, Math.min(cap, min + inc - 1), now);
+      a.next = now + rnd(...sp.ai) * 1.4; changed = true; break;
+    } else a.next = Infinity;
+  }
+  if (now >= lot.endsAt) { closeLot(state, lot.leader, lot.price, now); return true; }
+  return changed;
+}
+export function skipToEnd(state, now) {
+  if (state.lot && state.lot.status === 'open') { const r = sealed(state); closeLot(state, r.id, r.price, now); }
+  while (chooseLot(state, now)) { const r = sealed(state); closeLot(state, r.id, r.price, now); }
+  endAuction(state);
+}
+export function endAuction(state) {
+  let bid = 1000;
+  state.teams.forEach(t => {
+    while (slots(t) > 0) {
+      const gk = !hasGK(state, t);
+      const p = { n: 'Cria da Base', o: Math.round(rnd(62, 68)), p: gk ? 'GK' : pick(['CB','CM','ST','LB','RB','CDM']), a: [], s: Array(6).fill(62), c: 'Brasil', t: 'Base', base: true };
+      state.base[bid] = p; t.squad.push(bid); t.paid[bid] = 0; bid++;
+    }
+    if (t.bot) { const b = bestFormation(state, t.squad); t.formation = b.name; t.lineup = b.lineup; t.ready = true; }
+    else { t.lineup = autoLineup(state, t.squad, t.formation); t.ready = false; }
+  });
+  state.lot = null; state.phase = 'lineup'; state.lineupEndsAt = Date.now() + 150000;
+}
+export function setLineup(state, teamId, formation, lineup) {
+  const t = state.teams.find(x => x.id === teamId); if (!t || !FORMATIONS[formation]) return;
+  if (!Array.isArray(lineup) || lineup.length !== 11) return;
+  const a = lineup.slice().sort((x, y) => x - y).join(), b = t.squad.slice().sort((x, y) => x - y).join();
+  if (a !== b) return;
+  t.formation = formation; t.lineup = lineup;
+}
+export function startCup(state) {
+  state.teams.forEach(t => { if (!t.lineup) t.lineup = autoLineup(state, t.squad, t.formation); });
+  state.cup = createCup(state); state.phase = 'cup';
+}
