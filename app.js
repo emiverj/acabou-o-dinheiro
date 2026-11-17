@@ -1,6 +1,6 @@
 // Acabou o dinheiro? — interface e sincronização
 import * as E from './engine.js';
-import { PLAYERS, setBase, BASE_NAMES, MODES, ovrRange } from './db.js';
+import { PLAYERS, setBase, BASE_NAMES, MODES, ovrRange, tiersOf } from './db.js';
 import { openChannel, ONLINE, track } from './net.js';
 import { play, isMuted, setMuted, playAcabou } from './sound.js';
 import { resultImage } from './share.js';
@@ -108,7 +108,7 @@ function stepDown(p) {
 function takeOver() {
   const old = state.hostId, off = offset, now = Date.now();
   const sh = v => (typeof v === 'number' && v > 1e12) ? v - off : v;
-  if (state.lot) { state.lot.endsAt = Math.max(sh(state.lot.endsAt), now + 4000); state.lot.closedAt = sh(state.lot.closedAt); }
+  if (state.lot) { state.lot.endsAt = Math.max(sh(state.lot.endsAt), now + 4000); state.lot.closedAt = sh(state.lot.closedAt); state.lot.openAt = sh(state.lot.openAt); }
   if (state.cup && state.cup.live) { state.cup.live.at = sh(state.cup.live.at); state.cup.live.endAt = sh(state.cup.live.endAt); }
   state.lineupEndsAt = sh(state.lineupEndsAt); state.prepEndsAt = sh(state.prepEndsAt);
   if (state.tr) state.tr.offers.forEach(o => { if (o.botAt) o.botAt = sh(o.botAt); });
@@ -332,7 +332,7 @@ function renderHome() {
     <div class="panel">
       <h2>Criar sala</h2>
       <div class="lead">Você vira o anfitrião: deixe esta aba aberta até o fim da partida.</div>
-      <div class="field"><label>Modo</label>${seg('base', Object.entries(MODES).map(([k, m]) => { const [lo, hi] = ovrRange(k); return [k, m.name, `<img src="${m.icon}" alt="" width="46" height="46">`, `${m.list.length} jogadores · OVR ${lo}–${hi}`]; }), 'tiles modes')}</div>
+      <div class="field"><label>Modo</label>${seg('base', Object.entries(MODES).map(([k, m]) => [k, m.name, `<img src="${m.icon}" alt="" width="46" height="46">`, m.desc]), 'tiles modes')}</div>
       <div class="grid2">
         <div class="field"><label>Orçamento</label>${seg('budget', [['100','R$ 100'],['150','R$ 150'],['200','R$ 200']])}</div>
         <div class="field"><label>Máx. de técnicos</label><select id="f-max">${[2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${+ui.settings.max === n ? 'selected' : ''}>${n} técnicos</option>`).join('')}</select></div>
@@ -478,16 +478,16 @@ function previewAssign(team) {
 
 /* ---------- LEILÃO ---------- */
 function cardHTML(p, hide) {
-  const tier = hide ? 'neutral' : p.o >= 89 ? 'elite' : p.o >= 85 ? 'gold' : 'silver';
+  const [t1, t2] = tiersOf(state.settings.base); const tier = hide ? 'neutral' : p.o >= t2 ? 'elite' : p.o >= t1 ? 'gold' : 'silver';
   const alt = p.a.length ? p.a.map(a => E.POS_PT[a] || a).join(' · ') : 'só ' + posLabel(p);
   const hw = p.h ? `${(p.h / 100).toFixed(2).replace('.', ',')} m${p.w ? ` · ${p.w} kg` : ''}` : '—';
   return `<div class="pcard ${tier}">
     <div class="pc-head"><div><div class="pc-ovr${hide ? ' q' : ''}">${hide ? '?' : p.o}</div><div class="pc-pos">${posLabel(p)}</div></div><div class="pc-nat">${flagImg(p)}<span>${esc(p.c)}</span></div></div>
     <div class="pc-shirt">${jerseySVG(p.t, p.n)}</div>
     <div class="pc-name">${esc(p.n)}</div>
-    <div class="pc-club">${esc(p.t)}${p.y ? ' · Copa ' + p.y : ''}</div>
-    <div class="pc-traits">${p.x ? `<span class="special" title="Especial${p.l ? ' de lenda' : ''}"><i>${p.xi || specialIcon(p.x)}</i> ${esc(p.x)}</span>${p.l ? '<span class="legend" title="Lenda: jogador histórico">👑 Lenda</span>' : ''}` : p.o < 85 ? '' : (p.k && p.k[0] ? `<span>${esc(p.k[0])}</span>` : '')}</div>
-    <div class="pc-foot"><div><span>Posições</span><b>${posLabel(p)}${p.a.length ? ' · ' + alt : ''}</b></div><div>${p.y ? `<span>Copa</span><b>${p.y} · ${esc(p.c)}</b>` : `<span>${p.w ? 'Altura · peso' : 'Altura'}</span><b>${hw}</b>`}</div></div>
+    ${p.y ? '' : `<div class="pc-club">${esc(p.t)}</div>`}
+    <div class="pc-traits">${p.x ? `<span class="special" title="Especial${p.l ? ' de lenda' : ''}"><i>${p.xi || specialIcon(p.x)}</i> ${esc(p.x)}</span>${p.l ? '<span class="legend" title="Lenda: jogador histórico">👑 Lenda</span>' : ''}` : p.o < t1 ? '' : (p.k && p.k[0] ? `<span>${esc(p.k[0])}</span>` : '')}</div>
+    <div class="pc-foot"><div><span>Posições</span><b>${posLabel(p)}${p.a.length ? ' · ' + alt : ''}</b></div><div>${p.y ? `<span>Copa do Mundo</span><b>${p.y}</b>` : `<span>${p.w ? 'Altura · peso' : 'Altura'}</span><b>${hw}</b>`}</div></div>
   </div>`;
 }
 let lastCardNo = -1;
@@ -662,7 +662,7 @@ function frame() {
       else {
         bar.style.width = Math.min(100, left / sp.open * 100) + '%';
         bar.style.background = left <= 1.5 ? 'var(--bad)' : left <= 3 ? 'var(--warn)' : 'var(--ok)';
-        if (!lot.leader) { const fl = E.floorFor(state, PLAYERS[lot.pid]); c.textContent = left <= 3 ? 'Ninguém? Última chance…' : 'Lance inicial: R$ ' + fl; c.classList.toggle('hot', left <= 3); }
+        if (!lot.leader) { const fl = E.floorFor(state, PLAYERS[lot.pid]); c.textContent = left <= 3 ? (lot.fast ? '⏩ ' : '') + 'Ninguém? Última chance…' : lot.fast ? '⏩ Relógio acelerado · lance inicial R$ ' + fl : 'Lance inicial: R$ ' + fl; c.classList.toggle('hot', left <= 3); }
         else if (left <= 1) { c.textContent = 'Dou-lhe três…'; c.classList.add('hot'); }
         else if (left <= 2) { c.textContent = 'Dou-lhe duas…'; c.classList.add('hot'); }
         else if (left <= 3) { c.textContent = 'Dou-lhe uma…'; c.classList.remove('hot'); }
@@ -671,6 +671,12 @@ function frame() {
     }
   }
   if (state && state.phase === 'cup' && view === 'live') { try { liveTick(false); } catch (e) { console.error(e); } }
+  // alarme a cada 30 s do relógio de 5 minutos (trocas + tática)
+  if (state && (state.phase === 'trades' || state.phase === 'lineup') && state.prepEndsAt) {
+    const left = Math.ceil((state.prepEndsAt - hostNow()) / 1000), mark = Math.floor(left / 30);
+    if (left > 0 && left < 295 && ui.alarmMark != null && mark < ui.alarmMark) play('alarm');
+    ui.alarmMark = left > 0 ? mark : null;
+  } else ui.alarmMark = null;
   if (state && state.phase === 'trades' && $('#tr-cd')) { const s = Math.max(0, Math.ceil((state.prepEndsAt - hostNow()) / 1000)); $('#tr-cd').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
   if (state && state.phase === 'lineup' && $('#lu-cd')) { const s = Math.max(0, Math.ceil((state.lineupEndsAt - hostNow()) / 1000)); $('#lu-cd').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
   requestAnimationFrame(frame);
@@ -680,7 +686,7 @@ requestAnimationFrame(frame);
 /* ---------- ESCALAÇÃO ---------- */
 /* ---------- janela de trocas ---------- */
 function renderTrades() {
-  const mt = myTeam(), tr = state.tr; ui.tr = ui.tr || { give: [], get: [], to: null, pay: 0, recv: 0, release: {} };
+  const mt = myTeam(), tr = state.tr; ui.tr = ui.tr || { give: [], get: [], to: null, cash: 0, dir: 'pay', tab: 'trade' };
   const others = state.teams.filter(t => !mt || t.id !== mt.id);
   if (!ui.tr.to || !teamById(ui.tr.to)) ui.tr.to = others[0] && others[0].id;
   if (view !== 'trades') {
@@ -688,64 +694,62 @@ function renderTrades() {
     app.innerHTML = `
     <div class="ah"><h2>Janela de trocas</h2><div class="prog">A bola rola em <span class="countdown" id="tr-cd"></span></div></div>
     <div class="tr-top" id="tr-top"></div>
-    <div class="tgrid">
+    <div class="tr-tabs seg"><button data-tab="trade">🔁 Trocas</button><button data-tab="free">🛒 Mercado de sobras</button></div>
+    <div class="tgrid" id="tr-trade">
       <div class="panel" id="tr-build">
-        <h2>Montar proposta</h2><div class="lead">Escolha o time, marque quem sai e quem chega e, se quiser, coloque dinheiro no meio.</div>
         <div class="field"><label>Negociar com</label><select id="tr-to"></select></div>
         <div class="tr-cols"><div><div class="lbl">Você dá</div><div id="tr-mine"></div></div><div><div class="lbl">Você recebe</div><div id="tr-theirs"></div></div></div>
-        <div class="grid2" style="margin-top:12px"><div class="field"><label>Você paga (R$)</label><input type="text" inputmode="numeric" id="tr-pay" value="0"></div><div class="field"><label>Você recebe (R$)</label><input type="text" inputmode="numeric" id="tr-recv" value="0"></div></div>
+        <div class="tr-cash"><select id="tr-dir"><option value="pay">Você paga</option><option value="recv">Você recebe</option></select><span>R$</span><input type="text" inputmode="numeric" id="tr-amt" value="0"></div>
         <div id="tr-sum" class="hint"></div>
         <button class="cta" id="tr-send">Propor troca</button>
       </div>
-      <div class="side">
-        <div class="box"><h3>Propostas para você</h3><div id="tr-in"></div></div>
-        <div class="box"><h3>Suas propostas</h3><div id="tr-out"></div></div>
-        <div class="box"><h3>Negócios fechados</h3><ul class="feed small" id="tr-deals"></ul></div>
-      </div>
+      <div class="side"><div id="tr-props"></div><div class="box"><h3>Últimos negócios</h3><ul class="feed small" id="tr-deals"></ul></div></div>
     </div>
-    <div class="panel" style="margin-top:18px"><h2>Mercado de sobras</h2><div class="lead">Jogadores que ficaram sem dono no leilão. Contrate com o dinheiro que sobrou: escolha quem sai do seu elenco (goleiro por goleiro, linha por linha).</div><div id="tr-free"></div></div>`;
+    <div class="panel" id="tr-freep" style="display:none"><div class="lead" style="margin-bottom:10px">Jogadores sem dono, a preço fixo. Escolha quem sai do seu elenco (goleiro por goleiro, linha por linha).</div><div id="tr-free"></div></div>`;
     $('#tr-to').onchange = e => { ui.tr.to = e.target.value; ui.tr.get = []; renderTrades(); };
     const num = v => Math.max(0, Math.floor(+String(v).replace(/\D/g, '') || 0));
-    $('#tr-pay').oninput = e => { ui.tr.pay = num(e.target.value); sumLine(); };
-    $('#tr-recv').oninput = e => { ui.tr.recv = num(e.target.value); sumLine(); };
+    $('#tr-dir').onchange = e => { ui.tr.dir = e.target.value; sumLine(); };
+    $('#tr-amt').oninput = e => { ui.tr.cash = num(e.target.value); sumLine(); };
     $('#tr-send').onclick = () => {
       if (!ui.tr.give.length && !ui.tr.get.length) return toast('Marque pelo menos um jogador');
-      act({ type: 'offer', to: ui.tr.to, give: ui.tr.give, get: ui.tr.get, cash: ui.tr.pay - ui.tr.recv });
-      ui.tr.give = []; ui.tr.get = []; ui.tr.pay = ui.tr.recv = 0; $('#tr-pay').value = 0; $('#tr-recv').value = 0; toast('Proposta enviada');
+      act({ type: 'offer', to: ui.tr.to, give: ui.tr.give, get: ui.tr.get, cash: ui.tr.dir === 'pay' ? ui.tr.cash : -ui.tr.cash });
+      ui.tr.give = []; ui.tr.get = []; ui.tr.cash = 0; $('#tr-amt').value = 0; toast('Proposta enviada'); renderTrades();
     };
     app.addEventListener('click', tradeClicks);
   }
+  app.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === ui.tr.tab));
+  $('#tr-trade').style.display = ui.tr.tab === 'trade' ? '' : 'none'; $('#tr-freep').style.display = ui.tr.tab === 'free' ? '' : 'none';
   const T = teamById(ui.tr.to);
   const left = mt ? E.tradesLeft(state, mt) : 0;
-  setHTML($('#tr-top'), mt ? `<span>💰 Saldo <b>${fmt(mt.budget)}</b></span><span>🔁 Trocas <b>${E.TRADE_LIMIT - left}/${E.TRADE_LIMIT}</b></span>
-    <button class="${mt.ready ? 'ghost' : 'gold'}" id="tr-ready">${mt.ready ? 'Pronto ✓ (desfazer)' : 'Pronto, ir para a tática'}</button><button class="ghost" id="tr-attr">📋 Atributos do meu time</button>
-    ${isHost ? '<button class="ghost" id="tr-go">Encerrar janela agora</button>' : ''}<span class="tr-wait">${state.teams.filter(t => !E.botLike(t) && !t.ready).map(t => esc(t.name)).join(', ') ? 'Esperando: ' + state.teams.filter(t => !E.botLike(t) && !t.ready).map(t => esc(t.name)).join(', ') : ''}</span>` : '');
-  setHTML($('#tr-to'), others.map(t => `<option value="${t.id}" ${t.id === ui.tr.to ? 'selected' : ''}>${esc(t.name)}${E.botLike(t) ? ' (bot)' : ''} · ${fmt(t.budget)} · ${E.tradesLeft(state, t)} trocas</option>`).join(''));
+  const waiting = state.teams.filter(t => !E.botLike(t) && !t.ready).length;
+  setHTML($('#tr-top'), mt ? `<span>💰 <b>${fmt(mt.budget)}</b></span><span>🔁 <b>${E.TRADE_LIMIT - left}/${E.TRADE_LIMIT}</b> trocas</span>
+    <button class="${mt.ready ? 'ghost' : 'gold'}" id="tr-ready">${mt.ready ? 'Pronto ✓' : 'Pronto'}</button><button class="ghost small" id="tr-attr">📋 Atributos</button>
+    ${isHost ? '<button class="ghost small" id="tr-go">Encerrar janela</button>' : ''}${waiting ? `<span class="tr-wait">${waiting} ${waiting > 1 ? 'técnicos' : 'técnico'} decidindo</span>` : ''}` : '');
+  setHTML($('#tr-to'), others.map(t => `<option value="${t.id}" ${t.id === ui.tr.to ? 'selected' : ''}>${esc(t.name)}${E.botLike(t) ? ' (bot)' : ''} · ${fmt(t.budget)}</option>`).join(''));
   const row = (id, side) => { const p = P(id), on = ui.tr[side].includes(id); return `<label class="tr-p ${on ? 'on' : ''}" data-tp="${side}:${id}"><span class="po">${p.o}</span><span class="pp">${E.POS_PT[p.p]}</span><span class="pn">${esc(dn(p))}${state.penal[id] ? ' <i class="st-off">−5</i>' : ''}</span></label>`; };
   const byPos = list => list.slice().sort((a, b) => (P(a).p === 'GK' ? -1 : 0) - (P(b).p === 'GK' ? -1 : 0) || P(b).o - P(a).o);
   if (mt) setHTML($('#tr-mine'), byPos(mt.squad).map(id => row(id, 'give')).join(''));
   if (T) setHTML($('#tr-theirs'), byPos(T.squad).map(id => row(id, 'get')).join(''));
   sumLine();
-  const offTxt = o => { const A = teamById(o.from), B = teamById(o.to); return `<b>${esc(A.name)}</b> dá ${o.give.map(pn).join(', ') || 'ninguém'}${o.cash > 0 ? ' + ' + fmt(o.cash) : ''} · <b>${esc(B.name)}</b> dá ${o.get.map(pn).join(', ') || 'ninguém'}${o.cash < 0 ? ' + ' + fmt(-o.cash) : ''}`; };
+  const offTxt = o => { const A = teamById(o.from), B = teamById(o.to); return `<b>${esc(A.name)}</b> dá ${o.give.map(pn).join(', ') || '—'}${o.cash > 0 ? ' + ' + fmt(o.cash) : ''} · <b>${esc(B.name)}</b> dá ${o.get.map(pn).join(', ') || '—'}${o.cash < 0 ? ' + ' + fmt(-o.cash) : ''}`; };
   const inc = tr.offers.filter(o => mt && o.to === mt.id), out = tr.offers.filter(o => mt && o.from === mt.id);
-  setHTML($('#tr-in'), inc.map(o => `<div class="offer">${offTxt(o)}<div class="ctrl"><button class="gold" data-ok="${o.id}">Aceitar</button><button class="ghost" data-no="${o.id}">Recusar</button></div></div>`).join('') || '<div class="empty">Nenhuma proposta</div>');
-  setHTML($('#tr-out'), out.map(o => `<div class="offer">${offTxt(o)}<div class="ctrl"><button class="ghost" data-cancel="${o.id}">Cancelar</button></div></div>`).join('') || '<div class="empty">Nenhuma proposta pendente</div>');
-  setHTML($('#tr-deals'), tr.deals.slice(0, 12).map(d => d.t === 'free' ? `<li>🛒 <b>${esc(teamById(d.from).name)}</b> contratou ${pn(d.get[0])} (${fmt(d.cash)}) e liberou ${pn(d.give[0])}</li>`
-    : d.t === 'no' ? `<li class="ev-chance">❌ ${esc(teamById(d.to).name)} recusou a proposta do ${esc(teamById(d.from).name)}</li>`
-    : `<li class="ev-gol">🤝 Negócio fechado! <b>${esc(teamById(d.from).name)}</b> recebe ${[...d.get.map(pn), d.cash < 0 ? fmt(-d.cash) : ''].filter(Boolean).join(' + ') || 'nada'} · <b>${esc(teamById(d.to).name)}</b> recebe ${[...d.give.map(pn), d.cash > 0 ? fmt(d.cash) : ''].filter(Boolean).join(' + ') || 'nada'}</li>`).join('') || '<li class="empty">Nenhum negócio ainda</li>');
+  setHTML($('#tr-props'), inc.length || out.length ? `<div class="box"><h3>Propostas</h3>${inc.map(o => `<div class="offer in">📩 ${offTxt(o)}<div class="ctrl"><button class="gold" data-ok="${o.id}">Aceitar</button><button class="ghost" data-no="${o.id}">Recusar</button></div></div>`).join('')}${out.map(o => `<div class="offer">📤 ${offTxt(o)} <button class="ghost small" data-cancel="${o.id}">Cancelar</button></div>`).join('')}</div>` : '');
+  setHTML($('#tr-deals'), tr.deals.filter(d => d.t !== 'no').slice(0, 5).map(d => d.t === 'free' ? `<li>🛒 ${esc(teamById(d.from).name)} contratou ${pn(d.get[0])}</li>`
+    : `<li class="ev-gol">🤝 ${esc(teamById(d.from).name)} ⇄ ${esc(teamById(d.to).name)}: ${[...d.give, ...d.get].map(pn).join(', ')}</li>`).join('') || '<li class="empty">Nenhum negócio ainda</li>');
   if (tr.deals.length && tr.deals[0].t === 'ok' && ui.lastDeal !== tr.deals[0].at) { if (ui.lastDeal) play('gavel'); ui.lastDeal = tr.deals[0].at; }
-  const free = state.pool.slice().sort((a, b) => P(b).o - P(a).o).slice(0, 30);
+  const free = state.pool.slice().sort((a, b) => P(b).o - P(a).o).slice(0, 20);
   setHTML($('#tr-free'), free.length ? `<div class="free-list">${free.map(id => { const p = P(id), pr = E.freePrice(state, id); const opts = mt ? mt.squad.filter(x => (P(x).p === 'GK') === (p.p === 'GK')).sort((a, b) => P(a).o - P(b).o) : [];
-    return `<div class="free-row"><span class="po">${p.o}</span><span class="pp">${E.POS_PT[p.p]}</span><span class="pn">${esc(dn(p))}<small>${esc(p.t)}</small></span><span class="pr">${fmt(pr)}</span>
+    return `<div class="free-row"><span class="po">${p.o}</span><span class="pp">${E.POS_PT[p.p]}</span><span class="pn">${esc(dn(p))}</span><span class="pr">${fmt(pr)}</span>
     ${mt ? `<select data-rel="${id}">${opts.map(x => `<option value="${x}">sai ${esc(dn(P(x)))} (${P(x).o})</option>`).join('')}</select><button class="ghost" data-sign="${id}" ${mt.budget < pr ? 'disabled' : ''}>Contratar</button>` : ''}</div>`; }).join('')}</div>` : '<div class="empty">Não sobrou ninguém no pote.</div>');
 }
 function sumLine() {
   const mt = myTeam(); if (!mt || !$('#tr-sum')) return;
   const go = ui.tr.give.map(P), gi = ui.tr.get.map(P), sum = l => l.reduce((s, p) => s + p.o, 0);
-  setHTML($('#tr-sum'), `Sai: <b>${go.length}</b> jogador(es), soma de OVR ${sum(go)} · Chega: <b>${gi.length}</b>, soma ${sum(gi)}${ui.tr.pay || ui.tr.recv ? ` · Dinheiro: ${ui.tr.pay ? 'você paga ' + fmt(ui.tr.pay) : ''}${ui.tr.pay && ui.tr.recv ? ' e ' : ''}${ui.tr.recv ? 'você recebe ' + fmt(ui.tr.recv) : ''}` : ''}. A troca só fecha se os dois elencos continuarem com 1 goleiro e 10 de linha.`);
+  setHTML($('#tr-sum'), go.length || gi.length || ui.tr.cash ? `Sai ${go.length} (OVR ${sum(go)}) · chega ${gi.length} (OVR ${sum(gi)})${ui.tr.cash ? ` · ${ui.tr.dir === 'pay' ? 'você paga' : 'você recebe'} ${fmt(ui.tr.cash)}` : ''}` : 'Marque quem sai e quem chega.');
 }
 function tradeClicks(e) {
   if (view !== 'trades') return;
+  const tb = e.target.closest('[data-tab]'); if (tb) { ui.tr.tab = tb.dataset.tab; renderTrades(); return; }
   const tp = e.target.closest('[data-tp]');
   if (tp) { e.preventDefault(); const [side, id] = tp.dataset.tp.split(':'); const n = +id, L = ui.tr[side]; const i = L.indexOf(n); if (i >= 0) L.splice(i, 1); else L.push(n); renderTrades(); return; }
   const b = e.target.closest('button'); if (!b) return;
@@ -1116,6 +1120,7 @@ function renderEnd() {
     <div class="ctrl"><button class="gold" id="e-img">📸 Imagem para story</button><button class="ghost" id="e-copy">Copiar resultado</button><button class="ghost" id="e-sq">Ver elencos</button>
       ${isHost ? '<button class="ghost" id="e-again">Nova partida (mesma sala)</button>' : ''}<button class="ghost" id="e-leave">Sair</button></div>
   </div>
+  ${supportHTML()}
   ${recordHTML()}`;
   let txt = `💸 ACABOU O DINHEIRO? · Sala ${code}\n🏆 Campeão: ${champ.name} (${champ.coach})\n`;
   if (mt) {
@@ -1169,6 +1174,23 @@ document.addEventListener('click', e => {
 
 /* ---------- patrocínio e contato ---------- */
 const MAIL = ['mvferreirasilva', 'gmail.com'];
+// apoio ao jogo via Pix (chave aleatória do Marcos; o QR em img/pix.svg é gerado a partir deste código)
+const PIX = '00020126580014br.gov.bcb.pix01367022bedf-c91c-4652-944a-d33f12486b7d5204000053039865802BR5924MARCOS VINICIUS FERREIRA6014RIO DE JANEIRO62070503***6304D96C';
+function supportHTML() {
+  return `<div class="support"><img src="img/pix.svg" alt="QR Code do Pix para apoiar o jogo" class="support-qr">
+    <div><h3>Curtiu? Apoie o jogo 💚</h3><p>O <b>Acabou o dinheiro?</b> é feito por uma pessoa só, sem anúncios. Se quiser ajudar a manter o site no ar e ganhar modos novos, mande um Pix de qualquer valor.</p>
+    <button class="gold" data-pix>Copiar Pix copia e cola</button><div class="hint">Recebedor: Marcos Vinicius Ferreira · Mercado Pago</div></div></div>`;
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('[data-pix]')) return;
+  const ok = () => toast('Pix copiado! Cole no app do seu banco'); 
+  if (navigator.clipboard) navigator.clipboard.writeText(PIX).then(ok, () => prompt('Copie o código Pix:', PIX)); else prompt('Copie o código Pix:', PIX);
+});
+function showSupport() {
+  $('#modal').innerHTML = `<div class="modal" id="mbg"><div class="inner" style="max-width:560px"><div class="top"><h2>Apoie o jogo</h2><button class="ghost" id="mclose">Fechar</button></div>${supportHTML()}</div></div>`;
+  $('#mclose').onclick = () => $('#modal').innerHTML = '';
+  $('#mbg').onclick = e => { if (e.target.id === 'mbg') $('#modal').innerHTML = ''; };
+}
 function sponsorHTML(variant) {
   return `<div class="sponsor ${variant || ''}"><span class="sp-tag">Patrocínio</span><div class="sp-body"><b>Sua marca aqui</b><span>Apareça para quem está no meio do leilão. Fale comigo: <a class="mail" href="#">e-mail</a> · <a href="https://x.com/emiverj" target="_blank" rel="noopener">@emiverj</a></span></div></div>`;
 }
@@ -1182,6 +1204,7 @@ function showRules() {
   $('#mbg').onclick = e => { if (e.target.id === 'mbg') $('#modal').innerHTML = ''; };
 }
 $('#rules-btn').onclick = showRules;
+$('#support-link').onclick = e => { e.preventDefault(); showSupport(); };
 /* ---------- tema e modo streamer (preferência de cada jogador, guardada no navegador) ---------- */
 function applyPrefs() {
   let th = 'dark', sm = false; try { th = localStorage.getItem('acabou-theme') || 'dark'; sm = localStorage.getItem('acabou-streamer') === '1'; } catch (e) {}

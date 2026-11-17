@@ -1,6 +1,7 @@
 // Acabou o dinheiro? — regras, simulação e motor do leilão (roda no navegador do anfitrião)
 // Ao mudar qualquer regra aqui, atualize também o livro de regras em rules.js
-import { PLAYERS } from './db.js';
+import { PLAYERS, tiersOf, BASE } from './db.js';
+const BASE_NOW = () => BASE;
 
 export const POS_PT = { GK:'GOL', CB:'ZAG', LB:'LE', RB:'LD', LWB:'ALE', RWB:'ALD', CDM:'VOL', CM:'MC', CAM:'MEI', LM:'ME', RM:'MD', LW:'PE', RW:'PD', ST:'ATA', CF:'SA' };
 export const COLORS = ['#ffc833','#ff6b5a','#5ab0ff','#b98cff','#3ddc84','#ff9a3d','#ff7ac6','#7ae0e0','#d4e157','#a1887f'];
@@ -35,16 +36,17 @@ export function getP(state, id) {
 export const isGK = p => p.p === 'GK';
 
 // funções equivalentes: trocar entre elas não custa rendimento
-const EQUIV = { CM:['CDM'], CDM:['CM'], LB:['LWB'], LWB:['LB'], RB:['RWB'], RWB:['RB'], LM:['LW'], LW:['LM'], RM:['RW'], RW:['RM'] };
+const EQUIV = { ST:['CF'], CF:['ST'], CM:['CDM'], CDM:['CM'], LB:['LWB'], LWB:['LB'], RB:['RWB'], RWB:['RB'], LM:['LW'], LW:['LM'], RM:['RW'], RW:['RM'] };
 const LINE = { GK:0, CB:1, LB:1, RB:1, LWB:1, RWB:1, CDM:2, CM:2, CAM:2, LM:2, RM:2, LW:3, RW:3, ST:3, CF:3 };
 const NEAR = { LB:['LWB','LM'], RB:['RWB','RM'], LWB:['LB','LM'], RWB:['RB','RM'], CB:['CDM'], CDM:['CM','CB'], CM:['CDM','CAM'],
   CAM:['CM','CF','ST'], LM:['LW','LWB','CM'], RM:['RW','RWB','CM'], LW:['LM','ST'], RW:['RM','ST'], ST:['CF','CAM'], CF:['ST','CAM'] };
 export function fit(p, slot) {
   if ((p.p === 'GK') !== (slot === 'GK')) return 0.35;
   if (p.p === slot) return 1;
-  if (p.a.includes(slot)) return 0.97;
+  // posição alternativa ou função equivalente rendem 100% (como diz o livro de regras)
+  if (p.a.includes(slot)) return 1;
   const eq = EQUIV[slot] || [];
-  if (eq.includes(p.p) || p.a.some(a => eq.includes(a))) return 0.97;
+  if (eq.includes(p.p) || p.a.some(a => eq.includes(a))) return 1;
   const near = NEAR[slot] || [];
   if (near.includes(p.p) || p.a.some(a => near.includes(a))) return 0.9;
   const d = Math.abs(LINE[p.p] - LINE[slot]);
@@ -85,7 +87,8 @@ function hungarian(cost) {
 export function autoLineup(state, squad, formation) {
   const slots = FORMATIONS[formation];
   const ps = squad.map(id => getP(state, id));
-  const cost = slots.map(s => ps.map(p => -slotScore(p, s.pos)));
+  // leve preferência pela posição principal quando a nota empata
+  const cost = slots.map(s => ps.map(p => -slotScore(p, s.pos) - (p.p === s.pos ? 0.05 : 0)));
   const a = hungarian(cost);
   return slots.map((s, i) => squad[a[i]]);
 }
@@ -135,7 +138,8 @@ export const maxAllowed = t => slots(t) > 0 ? t.budget - (slots(t) - 1) : 0;
 // piso para craques: 85+ = 5% do orçamento, 89+ = 10% (ex.: R$ 5 e R$ 10 com R$ 100)
 export function floorFor(state, p) {
   const b = state.settings.budget;
-  return p.o >= 89 ? Math.round(b * 0.10) : p.o >= 85 ? Math.round(b * 0.05) : 1;
+  const [t1, t2] = tiersOf(state.settings.base);
+  return p.o >= t2 ? Math.round(b * 0.10) : p.o >= t1 ? Math.round(b * 0.05) : 1;
 }
 // menor lance válido deste time no lote atual
 export function minBid(state, t) {
@@ -152,6 +156,7 @@ const hasK = (p, k) => (p.k || []).includes(k) || p.x === k;
 function pickScorer(state, team, header) {
   return wpick(onField(state, team).filter(x => x.pos !== 'GK').map(x => {
     let w = ((SECT[x.pos].a || 0) + 0.05) * Math.pow((x.p.p === 'GK' ? 30 : x.p.s[1]) / 80, 4);
+    if (x.p.o >= 95) w *= 1 + (x.p.o - 94) * 0.35;
     if (header) w = (SECT[x.pos].a || 0.25) * Math.pow((x.p.h || 182) / 182, 6) * Math.pow(x.p.s[5] / 80, 2) * (hasK(x.p, 'Cabeceador') || hasK(x.p, 'Dono do alto') ? 1.8 : 1) + (x.pos === 'CB' ? 0.25 : 0);
     if (!header && (hasK(x.p, 'Decisivo'))) w *= 1.25;
     return { id: x.id, w };
@@ -209,7 +214,10 @@ export function playMatch(state, h, a, knockout, neutral) {
   const pow = s => 0.65 * s.a + 0.35 * s.m, wall = s => 0.7 * s.d + 0.3 * s.m;
   const lh = Math.min(4.2, Math.max(.2, (neutral ? 1.28 : 1.38) * Math.exp(0.1 * (pow(sh) - wall(sa)))));
   const la = Math.min(4.2, Math.max(.2, (neutral ? 1.28 : 1.16) * Math.exp(0.1 * (pow(sa) - wall(sh)))));
-  const ev = [], T = { h, a }, O = { h: a, a: h }, L = { h: lh, a: la };
+  // lendas 95+ decidem: cada uma em campo aumenta a chance de gol do time (goleiro 95+ diminui a do adversário)
+  const star = t => onField(state, t).reduce((m, x) => m * (x.p.o >= 95 && x.pos !== 'GK' ? 1 + (x.p.o - 94) * 0.05 : 1), 1);
+  const wall95 = t => onField(state, t).some(x => x.pos === 'GK' && x.p.o >= 95) ? 0.9 : 1;
+  const ev = [], T = { h, a }, O = { h: a, a: h }, L = { h: Math.min(4.6, lh * star(h) * wall95(a)), a: Math.min(4.6, la * star(a) * wall95(h)) };
   const minute = () => Math.min(90, Math.max(1, Math.round(rnd(0.5, 90.4)))) + Math.random() * 0.9;
   for (const side of ['h', 'a']) {
     const team = T[side], opp = O[side];
@@ -252,7 +260,7 @@ export function playMatch(state, h, a, knockout, neutral) {
   for (const side of ['h', 'a']) {
     const team = T[side], conceded = side === 'h' ? ag : hg, res = m.w === team.id ? 0.35 : m.w ? -0.2 : 0.1;
     onField(state, team).forEach(x => {
-      let n = 6.4 + rnd(-0.3, 0.3) + res + (x.p.o - 84) * 0.05;
+      let n = 6.4 + rnd(-0.3, 0.3) + res + (x.p.o - (state.lo + state.hi) / 2 + 2) * 0.05;
       ev.forEach(e => {
         if (e.p === x.id && e.t === 'gol') n += 1;
         if (e.as === x.id) n += 0.6;
@@ -526,7 +534,7 @@ export function buildPool(nTeams, bySector) {
   const gks = ids.filter(i => isGK(PLAYERS[i])), fields = ids.filter(i => !isGK(PLAYERS[i]));
   const strat = (list, k) => {
     if (k >= list.length) return list.slice();
-    const tiers = [list.filter(i => PLAYERS[i].o >= 89), list.filter(i => PLAYERS[i].o >= 85 && PLAYERS[i].o < 89), list.filter(i => PLAYERS[i].o < 85)];
+    const [t1, t2] = tiersOf(BASE_NOW()); const tiers = [list.filter(i => PLAYERS[i].o >= t2), list.filter(i => PLAYERS[i].o >= t1 && PLAYERS[i].o < t2), list.filter(i => PLAYERS[i].o < tiersOf(BASE_NOW())[0])];
     const out = []; tiers.forEach(t => { shuffle(t); out.push(...t.slice(0, Math.round(k * t.length / list.length))); });
     const rest = shuffle(list.filter(i => !out.includes(i))); while (out.length < k && rest.length) out.push(rest.pop());
     return out.slice(0, k);
@@ -597,7 +605,7 @@ export function chooseLot(state, now) {
   if (!cands.length) return false;
   const pid = pick(cands); state.pool.splice(state.pool.indexOf(pid), 1); state.lotNo++;
   const sp = SPEEDS[state.settings.speed];
-  state.lot = { no: state.lotNo, pid, price: 0, leader: null, endsAt: now + sp.open * 1000, status: 'open', passed: [] };
+  state.lot = { no: state.lotNo, pid, price: 0, leader: null, endsAt: now + sp.open * 1000, status: 'open', passed: [], openAt: now };
   state._ai = {}; state.teams.forEach(t => { if (botLike(t)) state._ai[t.id] = { max: botMax(state, t, PLAYERS[pid]), next: now + rnd(900, 2600) }; });
   const humansIn = state.teams.filter(t => !botLike(t) && needFor(state, t, PLAYERS[pid]) && maxAllowed(t) >= 1);
   state.lot.auto = humansIn.length === 0;
@@ -676,6 +684,8 @@ export function tickAuction(state, now) {
     if (lot.auto && now < lot.endsAt) return false;
     const r = sealed(state); closeLot(state, r.id, r.price, now); return true;
   }
+  // ninguém deu lance nos primeiros 3 s: o relógio passa a correr no dobro da velocidade
+  if (!lot.leader && !lot.fast && lot.openAt && now - lot.openAt >= 3000) { lot.fast = true; lot.endsAt = now + Math.max(0, lot.endsAt - now) / 2; return true; }
   // ninguém (além de quem está na frente) tem dinheiro para cobrir → fecha na hora: vende ao líder ou descarta
   const canCover = state.teams.some(t => t.id !== lot.leader && needFor(state, t, PLAYERS[lot.pid]) && maxAllowed(t) >= minBid(state, t));
   if (!canCover) { closeLot(state, lot.leader, lot.price, now); lot.quick = true; return true; }
