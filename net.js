@@ -20,7 +20,7 @@ export async function openChannel(name, onMsg) {
   }
   const supa = await getClient();
   const ch = supa.channel('acabou-' + name, { config: { broadcast: { self: false, ack: false } } });
-  ['state', 'action', 'ping', 'room'].forEach(ev => ch.on('broadcast', { event: ev }, ({ payload }) => onMsg(ev, payload)));
+  ['state', 'action', 'ping', 'room', 'react'].forEach(ev => ch.on('broadcast', { event: ev }, ({ payload }) => onMsg(ev, payload)));
   await new Promise((resolve, reject) => {
     const to = setTimeout(() => reject(new Error('Tempo esgotado ao conectar')), 12000);
     ch.subscribe(status => {
@@ -32,4 +32,14 @@ export async function openChannel(name, onMsg) {
     send: (event, payload) => ch.send({ type: 'broadcast', event, payload }),
     close: () => supa.removeChannel(ch),
   };
+}
+
+// Medição de uso: registra eventos anônimos numa tabela "eventos" do Supabase (se ela existir).
+export function track(tipo, dados) {
+  if (!ONLINE) return;
+  try {
+    fetch(SUPABASE_URL + '/rest/v1/eventos', { method: 'POST', keepalive: true,
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ tipo, sala: (dados && dados.sala) || null, dados: dados || {} }) }).catch(() => {});
+  } catch (e) {}
 }

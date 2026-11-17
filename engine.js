@@ -132,7 +132,7 @@ export const hasGK = (state, t) => t.squad.some(id => isGK(getP(state, id)));
 export const fieldCount = (state, t) => t.squad.filter(id => !isGK(getP(state, id))).length;
 export function needFor(state, t, p) { return isGK(p) ? !hasGK(state, t) : fieldCount(state, t) < 10; }
 export const maxAllowed = t => slots(t) > 0 ? t.budget - (slots(t) - 1) : 0;
-// piso para craques: 85+ = 5% do orçamento, 89+ = 10% (ex.: €5 e €10 com €100)
+// piso para craques: 85+ = 5% do orçamento, 89+ = 10% (ex.: R$ 5 e R$ 10 com R$ 100)
 export function floorFor(state, p) {
   const b = state.settings.budget;
   return p.o >= 89 ? Math.round(b * 0.10) : p.o >= 85 ? Math.round(b * 0.05) : 1;
@@ -146,31 +146,90 @@ export function minBid(state, t) {
 
 /* ---------------- Simulação de partidas ---------------- */
 function poisson(l) { const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= Math.random(); } while (p > L); return k - 1; }
-function pickScorer(state, team) {
-  const slots_ = FORMATIONS[team.formation];
-  const arr = slots_.map((s, i) => { const p = getP(state, team.lineup[i]); const a = (SECT[s.pos].a || 0) + 0.05;
-    return { id: team.lineup[i], w: s.pos === 'GK' ? 0 : a * Math.pow((p.p==='GK'?30:p.s[1]) / 80, 4) }; });
-  let r = Math.random() * arr.reduce((s, x) => s + x.w, 0);
-  for (const x of arr) { r -= x.w; if (r <= 0) return x.id; }
-  return arr[arr.length-1].id;
+function wpick(arr) { let r = Math.random() * arr.reduce((s, x) => s + x.w, 0); for (const x of arr) { r -= x.w; if (r <= 0) return x.id; } return arr[arr.length - 1].id; }
+function onField(state, team) { return FORMATIONS[team.formation].map((s, i) => ({ id: team.lineup[i], pos: s.pos, p: getP(state, team.lineup[i]) })); }
+const hasK = (p, k) => (p.k || []).includes(k) || p.x === k;
+function pickScorer(state, team, header) {
+  return wpick(onField(state, team).filter(x => x.pos !== 'GK').map(x => {
+    let w = ((SECT[x.pos].a || 0) + 0.05) * Math.pow((x.p.p === 'GK' ? 30 : x.p.s[1]) / 80, 4);
+    if (header) w = (SECT[x.pos].a || 0.25) * Math.pow((x.p.h || 182) / 182, 6) * Math.pow(x.p.s[5] / 80, 2) * (hasK(x.p, 'Cabeceador') || hasK(x.p, 'Dono do alto') ? 1.8 : 1) + (x.pos === 'CB' ? 0.25 : 0);
+    if (!header && (hasK(x.p, 'Decisivo'))) w *= 1.25;
+    return { id: x.id, w };
+  }));
 }
+const ASSIST_ROLE = { CAM:1.4, LW:1.3, RW:1.3, LM:1.3, RM:1.3, CM:1, ST:0.8, CF:1, LB:0.7, RB:0.7, LWB:0.8, RWB:0.8, CDM:0.6, CB:0.15, GK:0.02 };
+function pickAssist(state, team, scorer) {
+  return wpick(onField(state, team).filter(x => x.id !== scorer).map(x => ({ id: x.id, w: (ASSIST_ROLE[x.pos] || 0.5) * Math.pow(x.p.s[2] / 80, 3) * (hasK(x.p, 'Garçom') ? 1.4 : 1) })));
+}
+function takers(state, team) {
+  return onField(state, team).filter(x => x.pos !== 'GK').map(x => ({ id: x.id, v: x.p.s[1] + (hasK(x.p, 'Bola parada') ? 8 : 0) + (x.p.x === 'Batedor oficial' ? 15 : 0) })).sort((a, b) => b.v - a.v);
+}
+const CARD_ROLE = { CB:1.2, CDM:1.5, LB:1, RB:1, LWB:1, RWB:1, CM:0.9, CAM:0.5, LM:0.6, RM:0.6, LW:0.4, RW:0.4, ST:0.5, CF:0.5, GK:0.1 };
+function pickCard(state, team) { return wpick(onField(state, team).map(x => ({ id: x.id, w: (CARD_ROLE[x.pos] || 0.5) * (x.p.s[5] / 80) * (hasK(x.p, 'Xerife') || hasK(x.p, 'Trombador') ? 1.5 : 1) }))); }
+const gkId = team => team.lineup[FORMATIONS[team.formation].findIndex(s => s.pos === 'GK')];
+
 export function playMatch(state, h, a, knockout, neutral) {
   const sh = strength(state, h), sa = strength(state, a);
   const pow = s => 0.65 * s.a + 0.35 * s.m, wall = s => 0.7 * s.d + 0.3 * s.m;
-  const lh = Math.min(4.2, Math.max(.2, (neutral?1.28:1.38) * Math.exp(0.1 * (pow(sh) - wall(sa)))));
-  const la = Math.min(4.2, Math.max(.2, (neutral?1.28:1.16) * Math.exp(0.1 * (pow(sa) - wall(sh)))));
-  const hg = poisson(lh), ag = poisson(la);
-  const m = { h: h.id, a: a.id, hg, ag, sh: [], sa: [], played: true };
-  for (let i = 0; i < hg; i++) m.sh.push(pickScorer(state, h));
-  for (let i = 0; i < ag; i++) m.sa.push(pickScorer(state, a));
+  const lh = Math.min(4.2, Math.max(.2, (neutral ? 1.28 : 1.38) * Math.exp(0.1 * (pow(sh) - wall(sa)))));
+  const la = Math.min(4.2, Math.max(.2, (neutral ? 1.28 : 1.16) * Math.exp(0.1 * (pow(sa) - wall(sh)))));
+  const ev = [], T = { h, a }, O = { h: a, a: h }, L = { h: lh, a: la };
+  const minute = () => Math.min(90, Math.max(1, Math.round(rnd(0.5, 90.4)))) + Math.random() * 0.9;
+  for (const side of ['h', 'a']) {
+    const team = T[side], opp = O[side];
+    const g = poisson(L[side]);
+    for (let i = 0; i < g; i++) {
+      const r = Math.random(); let kind = 'jogada';
+      if (r < 0.09) kind = 'penalti'; else if (r < 0.15) kind = 'falta'; else if (r < 0.31) kind = 'cabeca';
+      let p, as = null;
+      if (kind === 'penalti' || kind === 'falta') { const tk = takers(state, team); p = (kind === 'falta' ? tk.find(x => hasK(getP(state, x.id), 'Bola parada')) || tk[0] : tk[0]).id; }
+      else p = pickScorer(state, team, kind === 'cabeca');
+      if ((kind === 'jogada' || kind === 'cabeca') && Math.random() < 0.78) as = pickAssist(state, team, p);
+      ev.push({ m: minute(), t: 'gol', s: side, kind, p, as });
+    }
+    const pm = poisson(0.06); for (let i = 0; i < pm; i++) ev.push({ m: minute(), t: 'penperdido', s: side, p: takers(state, team)[0].id, gk: gkId(opp) });
+    const sv = poisson(L[side] * 1.7); for (let i = 0; i < sv; i++) ev.push({ m: minute(), t: 'defesa', s: side, p: pickScorer(state, team, false), gk: gkId(opp) });
+    const ch = poisson(L[side] * 1.8 + 1); for (let i = 0; i < ch; i++) ev.push({ m: minute(), t: 'chance', s: side, p: pickScorer(state, team, Math.random() < .25) });
+    const y = poisson(1.5); const booked = new Set();
+    for (let i = 0; i < y; i++) { const p = pickCard(state, team); if (booked.has(p)) continue; booked.add(p); ev.push({ m: minute(), t: 'amarelo', s: side, p }); }
+    if (Math.random() < 0.035) ev.push({ m: minute(), t: 'vermelho', s: side, p: pickCard(state, team) });
+  }
+  ev.sort((x, y) => x.m - y.m);
+  const hg = ev.filter(e => e.t === 'gol' && e.s === 'h').length, ag = ev.filter(e => e.t === 'gol' && e.s === 'a').length;
+  const m = { h: h.id, a: a.id, hg, ag, ev, played: true };
+  m.sh = ev.filter(e => e.t === 'gol' && e.s === 'h').map(e => e.p); m.sa = ev.filter(e => e.t === 'gol' && e.s === 'a').map(e => e.p);
   if (knockout && hg === ag) {
-    const k = (t, o) => 0.75 + (strength(state, t).a - strength(state, o).d) * 0.004;
-    let ph = 0, pa = 0;
-    for (let i = 0; i < 5; i++) { if (Math.random() < k(h, a)) ph++; if (Math.random() < k(a, h)) pa++; }
-    while (ph === pa) { ph += Math.random() < k(h, a); pa += Math.random() < k(a, h); }
-    m.pens = [ph, pa];
+    const kp = (t, o) => 0.75 + (strength(state, t).a - strength(state, o).d) * 0.004;
+    const th = takers(state, h), ta = takers(state, a); const shoot = []; let ph = 0, pa = 0, i = 0;
+    while (true) {
+      const kh = Math.random() < kp(h, a), ka = Math.random() < kp(a, h);
+      shoot.push({ s: 'h', p: th[i % th.length].id, ok: kh }); if (kh) ph++;
+      shoot.push({ s: 'a', p: ta[i % ta.length].id, ok: ka }); if (ka) pa++;
+      i++; if (i >= 5 && ph !== pa) break; if (i > 30) { if (ph === pa) { ph++; shoot[shoot.length - 2].ok = true; } break; }
+    }
+    m.pens = [ph, pa]; m.shoot = shoot;
   }
   m.w = hg > ag ? h.id : ag > hg ? a.id : m.pens ? (m.pens[0] > m.pens[1] ? h.id : a.id) : null;
+  // notas dos jogadores
+  m.r = {};
+  for (const side of ['h', 'a']) {
+    const team = T[side], conceded = side === 'h' ? ag : hg, res = m.w === team.id ? 0.35 : m.w ? -0.2 : 0.1;
+    onField(state, team).forEach(x => {
+      let n = 6.4 + rnd(-0.3, 0.3) + res + (x.p.o - 84) * 0.05;
+      ev.forEach(e => {
+        if (e.p === x.id && e.t === 'gol') n += 1;
+        if (e.as === x.id) n += 0.6;
+        if (e.p === x.id && e.t === 'amarelo') n -= 0.3;
+        if (e.p === x.id && e.t === 'vermelho') n -= 1.2;
+        if (e.gk === x.id && (e.t === 'defesa')) n += 0.25;
+        if (e.gk === x.id && e.t === 'penperdido') n += 1;
+      });
+      if (x.pos === 'GK') n += conceded === 0 ? 0.8 : -0.3 * conceded;
+      else if (['CB', 'LB', 'RB', 'LWB', 'RWB'].includes(x.pos)) n += conceded === 0 ? 0.5 : -0.15 * conceded;
+      m.r[x.id] = Math.round(Math.min(10, Math.max(3, n)) * 10) / 10;
+    });
+  }
+  m.mvp = +Object.entries(m.r).sort((x, y) => y[1] - x[1])[0][0];
   return m;
 }
 
@@ -187,10 +246,9 @@ function roundRobin(ids, doubleLeg) {
 }
 const emptyRow = id => ({ id, j:0, v:0, e:0, d:0, gp:0, gc:0, pts:0 });
 export function koName(n) { return ({2:'Final',4:'Semifinal',8:'Quartas de final',16:'Oitavas de final'})[n] || 'Mata-mata'; }
-function buildKO(seeded) { // seeded: lista ordenada do melhor para o pior
+function buildKO(seeded) {
   let size = 1; while (size < seeded.length) size *= 2;
   const arr = seeded.slice(); while (arr.length < size) arr.push(null);
-  // chaveamento por sementes: 1 x último, 2 x penúltimo...
   const ms = []; for (let i = 0; i < size / 2; i++) ms.push({ h: arr[i], a: arr[size-1-i] });
   return ms;
 }
@@ -202,12 +260,10 @@ export function createCup(state) {
   const ids = state.teams.map(t => t.id);
   let format = state.settings.format;
   if (format === 'grupos' && ids.length < 6) format = 'liga';
-  const cup = { format, phase: null, ri: 0, ko: [], log: [], done: false };
-  if (format === 'liga') {
-    cup.phase = 'liga'; cup.rounds = roundRobin(ids, ids.length <= 4); cup.table = ids.map(emptyRow);
-  } else if (format === 'mata') {
-    cup.phase = 'ko'; cup.ko = [buildKO(shuffle(ids.slice()))];
-  } else {
+  const cup = { format, phase: null, ri: 0, ko: [], done: false, live: null, speed: 4 };
+  if (format === 'liga') { cup.phase = 'liga'; cup.rounds = roundRobin(ids, ids.length <= 4); cup.table = ids.map(emptyRow); }
+  else if (format === 'mata') { cup.phase = 'ko'; cup.ko = [buildKO(shuffle(ids.slice()))]; }
+  else {
     cup.phase = 'grupos';
     const g = Math.ceil(ids.length / 4), sh = shuffle(ids.slice());
     cup.groups = Array.from({ length: g }, (_, i) => ({ name: 'Grupo ' + 'ABCDEFGH'[i], teams: [] }));
@@ -217,74 +273,109 @@ export function createCup(state) {
   }
   return cup;
 }
-function applyTable(table, m) {
+export function applyTable(table, m) {
   const A = table.find(r => r.id === m.h), B = table.find(r => r.id === m.a);
   A.j++; B.j++; A.gp += m.hg; A.gc += m.ag; B.gp += m.ag; B.gc += m.hg;
   if (m.hg > m.ag) { A.v++; B.d++; A.pts += 3; } else if (m.hg < m.ag) { B.v++; A.d++; B.pts += 3; } else { A.e++; B.e++; A.pts++; B.pts++; }
 }
 const T = (state, id) => state.teams.find(t => t.id === id);
-// joga a próxima rodada; devolve título da rodada jogada
-export function advanceCup(state) {
-  const cup = state.cup; if (cup.done) return;
+// partidas da rodada atual (com o grupo anotado)
+export function currentRound(state) {
+  const cup = state.cup; if (!cup || cup.done) return [];
+  if (cup.phase === 'liga') return cup.rounds[cup.ri] || [];
+  if (cup.phase === 'grupos') return cup.groups.flatMap(gr => (gr.rounds[cup.ri] || []).map(m => { m.g = gr.name; return m; }));
+  return cup.ko[cup.ko.length - 1];
+}
+export function nextTitle(state) {
+  const cup = state.cup; if (!cup || cup.done) return '';
+  if (cup.phase === 'liga') return `Rodada ${cup.ri + 1} de ${cup.rounds.length}`;
+  if (cup.phase === 'grupos') return `Fase de grupos · rodada ${cup.ri + 1} de ${cup.groupRounds}`;
+  return koName(cup.ko[cup.ko.length - 1].length * 2);
+}
+export function upcoming(state) { return currentRound(state).filter(m => m.h && m.a && !m.played); }
+
+/* Relógio da rodada ao vivo: 1x = 12 minutos reais para 90 minutos (dois tempos de 6 min) */
+const RATE_1X = 90 / 720000; export const HT_MS = 3500; export const SPEEDS_LIVE = [2, 4, 6];
+function liveParts(l, now) {
+  const rate = RATE_1X * l.speed, el = Math.max(0, now - l.at);
+  if (l.base < 45) { const t1 = (45 - l.base) / rate; if (el < t1) return { m: l.base + el * rate, ht: false }; if (el < t1 + HT_MS) return { m: 45, ht: true }; return { m: Math.min(90, 45 + (el - t1 - HT_MS) * rate), ht: false }; }
+  return { m: Math.min(90, l.base + el * rate), ht: false };
+}
+export const liveMinute = (l, now) => liveParts(l, now).m;
+export const isHalftime = (l, now) => liveParts(l, now).ht;
+export function startRound(state, now, speed) {
+  const cup = state.cup; if (!cup || cup.done || cup.live) return;
+  const ms = currentRound(state);
+  ms.forEach(m => {
+    if (m.played) return;
+    if (!m.h || !m.a) { m.played = true; m.bye = true; m.w = m.h || m.a; return; }
+    Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), cup.phase === 'ko', cup.phase === 'ko'));
+  });
+  cup.live = { at: now, base: 0, speed: speed || cup.speed || 4, title: nextTitle(state), endAt: 0 };
+}
+export function setLiveSpeed(state, now, speed) {
+  const l = state.cup && state.cup.live; if (!l) return;
+  const pp = liveParts(l, now); l.base = pp.ht ? 45 : pp.m; l.at = now; l.speed = speed; state.cup.speed = speed;
+}
+export function skipLive(state, now) { const l = state.cup && state.cup.live; if (!l) return; l.base = 90; l.at = now; }
+// chamado pelo anfitrião: encerra a rodada ao vivo quando o relógio chega aos 90'
+export function tickLive(state, now) {
+  const l = state.cup && state.cup.live; if (!l) return false;
+  if (liveMinute(l, now) < 90) return false;
+  if (!l.endAt) { l.endAt = now; return true; }
+  const pens = currentRound(state).some(m => m.pens);
+  if (now - l.endAt > (pens ? 6500 : 2500)) { commitRound(state); return true; }
+  return false;
+}
+export function commitRound(state) {
+  const cup = state.cup; if (!cup || cup.done) return;
+  const ms = currentRound(state);
+  if (ms.some(m => !m.played)) { cup.live = cup.live || { at: Date.now(), base: 90, speed: 6 }; ms.forEach(m => { if (!m.played) { if (!m.h || !m.a) { m.played = true; m.bye = true; m.w = m.h || m.a; } else Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), cup.phase === 'ko', cup.phase === 'ko')); } }); }
+  cup.last = { title: nextTitle(state), matches: ms.filter(m => !m.bye) };
+  cup.live = null;
   if (cup.phase === 'liga') {
-    const ms = cup.rounds[cup.ri];
-    ms.forEach(m => { Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), false)); applyTable(cup.table, m); });
-    cup.last = { title: `Rodada ${cup.ri + 1} de ${cup.rounds.length}`, matches: ms };
-    cup.ri++;
+    ms.forEach(m => applyTable(cup.table, m)); cup.ri++;
     if (cup.ri >= cup.rounds.length) finishCup(state, sortTable(state, cup.table).map(r => r.id));
     return;
   }
   if (cup.phase === 'grupos') {
-    const played = [];
-    cup.groups.forEach(gr => { const ms = gr.rounds[cup.ri] || []; ms.forEach(m => { Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), false)); applyTable(gr.table, m); m.g = gr.name; played.push(m); }); });
-    cup.last = { title: `Fase de grupos · rodada ${cup.ri + 1} de ${cup.groupRounds}`, matches: played };
+    cup.groups.forEach(gr => (gr.rounds[cup.ri] || []).forEach(m => applyTable(gr.table, m)));
     cup.ri++;
     if (cup.ri >= cup.groupRounds) {
       const firsts = [], seconds = [];
       cup.groups.forEach(gr => { const st = sortTable(state, gr.table); firsts.push(st[0]); seconds.push(st[1]); });
       const rank = rows => sortTable(state, rows).map(r => r.id);
-      // cruzamento: 1º de um grupo enfrenta 2º de outro
       const f1 = rank(firsts), s2 = rank(seconds);
-      let seeded = f1.concat(s2);
-      if (cup.groups.length === 2) { cup.ko = [[{ h: f1[0], a: s2.find(id => id !== f1[0] && !sameGroup(cup, id, f1[0])) || s2[1] }, { h: f1[1], a: s2.find(id => !sameGroup(cup, id, f1[1])) || s2[0] }]]; }
-      else cup.ko = [buildKO(seeded)];
+      if (cup.groups.length === 2) cup.ko = [[{ h: f1[0], a: s2.find(id => !sameGroup(cup, id, f1[0])) || s2[1] }, { h: f1[1], a: s2.find(id => !sameGroup(cup, id, f1[1])) || s2[0] }]];
+      else cup.ko = [buildKO(f1.concat(s2))];
       cup.phase = 'ko'; cup.ri = 0;
     }
     return;
   }
-  if (cup.phase === 'ko') {
-    const ms = cup.ko[cup.ko.length - 1];
-    const size = ms.length * 2;
-    ms.forEach(m => {
-      if (m.played) return;
-      if (!m.h || !m.a) { m.played = true; m.bye = true; m.w = m.h || m.a; return; }
-      Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), true, true));
-    });
-    cup.last = { title: koName(size), matches: ms.filter(m => !m.bye) };
-    if (ms.length === 1) {
-      const f = ms[0]; const champ = f.w, vice = f.w === f.h ? f.a : f.h;
-      const semis = cup.ko.length > 1 ? cup.ko[cup.ko.length - 2].filter(m => !m.bye).map(m => m.w === m.h ? m.a : m.h) : [];
-      const rest = state.teams.map(t => t.id).filter(id => id !== champ && id !== vice && !semis.includes(id));
-      finishCup(state, [champ, vice, ...semis, ...rest]);
-    } else {
-      const w = ms.map(m => m.w), nr = []; for (let i = 0; i < w.length; i += 2) nr.push({ h: w[i], a: w[i+1] });
-      cup.ko.push(nr);
-    }
+  if (ms.length === 1) {
+    const f = ms[0]; const champ = f.w, vice = f.w === f.h ? f.a : f.h;
+    const semis = cup.ko.length > 1 ? cup.ko[cup.ko.length - 2].filter(m => !m.bye).map(m => m.w === m.h ? m.a : m.h) : [];
+    const rest = state.teams.map(t => t.id).filter(id => id !== champ && id !== vice && !semis.includes(id));
+    finishCup(state, [champ, vice, ...semis, ...rest]);
+  } else {
+    const w = ms.map(m => m.w), nr = []; for (let i = 0; i < w.length; i += 2) nr.push({ h: w[i], a: w[i+1] });
+    cup.ko.push(nr);
   }
 }
+// simula uma rodada inteira na hora (sem assistir)
+export function advanceCup(state) { const now = Date.now(); startRound(state, now, 6); commitRound(state); }
 function sameGroup(cup, a, b) { return cup.groups.some(g => g.teams.includes(a) && g.teams.includes(b)); }
-function finishCup(state, order) { state.cup.done = true; state.cup.final = order; state.phase = 'end'; }
-export function nextTitle(state) {
-  const cup = state.cup; if (!cup || cup.done) return '';
-  if (cup.phase === 'liga') return `Rodada ${cup.ri + 1}`;
-  if (cup.phase === 'grupos') return `Grupos · rodada ${cup.ri + 1}`;
-  return koName(cup.ko[cup.ko.length - 1].length * 2);
-}
-export function upcoming(state) {
-  const cup = state.cup; if (!cup || cup.done) return [];
-  if (cup.phase === 'liga') return cup.rounds[cup.ri];
-  if (cup.phase === 'grupos') return cup.groups.flatMap(gr => (gr.rounds[cup.ri] || []).map(m => ({ ...m, g: gr.name })));
-  return cup.ko[cup.ko.length - 1].filter(m => !m.played);
+function finishCup(state, order) {
+  state.cup.done = true; state.cup.final = order; state.phase = 'end';
+  // histórico da sala (vale para as próximas partidas na mesma sala)
+  const rec = state.record = state.record || {};
+  state.teams.forEach(t => { const r = rec[t.id] = rec[t.id] || { name: t.name, coach: t.coach, ed: 0, tit: 0, vice: 0, j: 0, v: 0, e: 0, d: 0, gp: 0, gc: 0 }; r.name = t.name; r.coach = t.coach; r.ed++; });
+  rec[order[0]].tit++; if (order[1] && rec[order[1]]) rec[order[1]].vice++;
+  allMatches(state).forEach(m => {
+    const A = rec[m.h], B = rec[m.a]; if (!A || !B) return;
+    A.j++; B.j++; A.gp += m.hg; A.gc += m.ag; B.gp += m.ag; B.gc += m.hg;
+    if (m.w === m.h) { A.v++; B.d++; } else if (m.w === m.a) { B.v++; A.d++; } else { A.e++; B.e++; }
+  });
 }
 export function allMatches(state) {
   const cup = state.cup; if (!cup) return [];
@@ -294,14 +385,34 @@ export function allMatches(state) {
   cup.ko.flat().forEach(m => m.played && !m.bye && out.push(m));
   return out;
 }
-export function topScorers(state, n) {
-  const c = new Map();
+// estatísticas por jogador (apenas partidas já encerradas, ou até o minuto informado na rodada ao vivo)
+export function playerStats(state, upto) {
+  const cup = state.cup, st = new Map();
+  const liveSet = new Set(cup && cup.live ? currentRound(state) : []);
+  const get = (id, team) => { const k = id + '|' + team; if (!st.has(k)) st.set(k, { id, team, j: 0, g: 0, a: 0, gf: 0, gp: 0, gh: 0, ya: 0, rc: 0, sv: 0, ps: 0, cs: 0, nt: 0, mvp: 0 }); return st.get(k); };
   allMatches(state).forEach(m => {
-    m.sh.forEach(id => { const k = id + '|' + m.h; c.set(k, (c.get(k) || 0) + 1); });
-    m.sa.forEach(id => { const k = id + '|' + m.a; c.set(k, (c.get(k) || 0) + 1); });
+    const live = liveSet.has(m), lim = live ? (upto ?? 0) : 999;
+    const tid = s => s === 'h' ? m.h : m.a, oth = s => s === 'h' ? m.a : m.h;
+    m.ev.forEach(e => {
+      if (e.m > lim) return;
+      if (e.t === 'gol') { const r = get(e.p, tid(e.s)); r.g++; if (e.kind === 'falta') r.gf++; if (e.kind === 'penalti') r.gp++; if (e.kind === 'cabeca') r.gh++; if (e.as != null) get(e.as, tid(e.s)).a++; }
+      if (e.t === 'amarelo') get(e.p, tid(e.s)).ya++;
+      if (e.t === 'vermelho') get(e.p, tid(e.s)).rc++;
+      if (e.t === 'defesa') get(e.gk, oth(e.s)).sv++;
+      if (e.t === 'penperdido') { const r = get(e.gk, oth(e.s)); r.sv++; r.ps++; }
+    });
+    if (!live || lim >= 90) {
+      for (const side of ['h', 'a']) {
+        const team = T(state, tid(side)); if (!team) continue;
+        team.lineup.forEach(id => { const r = get(id, team.id); r.j++; if (m.r && m.r[id] != null) r.nt += m.r[id]; });
+        const conceded = side === 'h' ? m.ag : m.hg; if (conceded === 0) get(gkId(team), team.id).cs++;
+      }
+      if (m.mvp != null) { const side = T(state, m.h).lineup.includes(m.mvp) ? m.h : m.a; get(m.mvp, side).mvp++; }
+    }
   });
-  return [...c.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, g]) => { const [id, team] = k.split('|'); return { id: +id, team, g }; });
+  return [...st.values()];
 }
+export function topScorers(state, n) { return playerStats(state).filter(r => r.g > 0).sort((a, b) => b.g - a.g || b.a - a.a).slice(0, n); }
 
 /* ---------------- Motor do leilão (anfitrião) ---------------- */
 export function newRoomState(code, host, settings) {
@@ -382,7 +493,7 @@ export function placeBid(state, teamId, amount, now) {
   if (lot.leader === teamId) return 'Você já está na frente';
   if (!needFor(state, t, p)) return isGK(p) ? 'Você já tem goleiro' : 'Seu elenco de linha está completo';
   const min = minBid(state, t);
-  if (amount < min) return 'Lance mínimo: €' + min;
+  if (amount < min) return 'Lance mínimo: R$ ' + min;
   if (amount > maxAllowed(t)) return 'Acima do seu limite';
   lot.price = amount; lot.leader = teamId; lot.passed = lot.passed.filter(id => id !== teamId);
   const sp = SPEEDS[state.settings.speed];
@@ -424,7 +535,7 @@ function closeLot(state, winnerId, price, now) {
   if (winnerId) {
     const t = state.teams.find(x => x.id === winnerId); t.budget -= price; t.squad.push(lot.pid); t.paid[lot.pid] = price;
     placeNew(state, t, lot.pid);
-    addLog(state, `${p.n} → ${t.name} por €${price}`);
+    addLog(state, `${p.n} → ${t.name} por R$ ${price}`);
   } else addLog(state, `${p.n} ficou sem lance`);
 }
 // chamado a cada ~200ms no anfitrião; devolve true se o estado mudou
@@ -530,6 +641,6 @@ export function setLineup(state, teamId, formation, lineup) {
   t.formation = formation; t.lineup = lineup;
 }
 export function startCup(state) {
-  state.teams.forEach(t => { if (!t.lineup) t.lineup = autoLineup(state, t.squad, t.formation); });
+  state.teams.forEach(t => { if (!t.lineup || t.lineup.some(x => x == null)) t.lineup = autoLineup(state, t.squad, t.formation); });
   state.cup = createCup(state); state.phase = 'cup';
 }
