@@ -4,10 +4,11 @@ import { PLAYERS } from './players.js';
 import { openChannel, ONLINE } from './net.js';
 import { rulesHTML } from './rules.js';
 import { jerseySVG } from './kits.js';
+import { createViewer } from './match.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-const fmt = n => '€' + n;
+const fmt = n => 'R$ ' + n;
 const app = $('#app');
 
 /* ---------- identidade ---------- */
@@ -140,7 +141,8 @@ function hostLoop() {
   if (!state) return;
   const now = Date.now(); let changed = presenceCheck(now);
   try { localStorage.setItem('acabou-alive-' + code, String(now)); } catch (e) {}
-  if (state.phase === 'auction') changed = E.tickAuction(state, now);
+  if (state.phase === 'auction') changed = E.tickAuction(state, now) || changed;
+  else if (state.phase === 'cup') changed = E.tickLive(state, now) || changed;
   else if (state.phase === 'lineup') {
     const humans = state.teams.filter(t => !E.botLike(t));
     if (humans.every(t => t.ready) || now > state.lineupEndsAt) { E.startCup(state); changed = true; }
@@ -217,9 +219,7 @@ function renderHome() {
   <div class="hero">
     <div>
       <div class="kicker">Leilão de futebol com os amigos</div>
-      <h1>€100.<br>Onze titulares.<br><em>Acabou o dinheiro?</em></h1>
-      <p class="sub">Crie uma sala, chame os amigos e disputem no martelo os ${PLAYERS.length} melhores jogadores do futebol europeu (OVR 81+). Depois escale seu time e veja quem leva o título na simulação.</p>
-      <div class="chips"><span class="chip">1 goleiro + 10 de linha</span><span class="chip">€100 por técnico</span><span class="chip">2 a 10 técnicos</span><span class="chip">Leilão ao vivo</span></div>
+      <h1>R$ 100.<br>Onze titulares.<br><em>Acabou o dinheiro?</em></h1>
       <figure class="quote"><img src="marcio.jpg" alt="Ilustração em pixel art de um dirigente de cabelos brancos e óculos numa coletiva"><figcaption><b>“Acabou o dinheiro!”</b><span>Márcio Braga, 2009</span></figcaption></figure>
     </div>
     <div class="panel">
@@ -235,7 +235,7 @@ function renderHome() {
       <h2>Criar sala</h2>
       <div class="lead">Você vira o anfitrião: deixe esta aba aberta até o fim da partida.</div>
       <div class="grid2">
-        <div class="field"><label>Orçamento</label>${seg('budget', [['100','€100'],['150','€150'],['200','€200']])}</div>
+        <div class="field"><label>Orçamento</label>${seg('budget', [['100','R$ 100'],['150','R$ 150'],['200','R$ 200']])}</div>
         <div class="field"><label>Máx. de técnicos</label><select id="f-max">${[2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${+ui.settings.max === n ? 'selected' : ''}>${n} técnicos</option>`).join('')}</select></div>
       </div>
       <div class="field"><label>Campeonato</label>${seg('format', [['liga','Pontos corridos'],['mata','Mata-mata'],['grupos','Grupos + mata-mata']])}</div>
@@ -297,7 +297,8 @@ function renderLobby() {
     <div class="lgrid">
       <div class="panel">
         <div class="lbl" style="margin-bottom:8px">Código da sala</div>
-        <div class="codebox"><div class="code-big">${esc(code)}</div><button class="gold" id="copy">Copiar convite</button></div>
+        <div class="codebox"><div class="code-big" id="codebig" title="Clique para mostrar">${esc(code)}</div><button class="gold" id="copy">Copiar convite</button></div>
+        <div class="streamer-note">Modo streamer: o código está escondido. Clique nele para mostrar só para você, ou use “Copiar convite”.</div>
         <div class="lead" style="margin-top:10px">Mande o código ou o link para os amigos. ${state.settings.pub ? 'A sala também aparece em "Salas abertas".' : 'Sala privada.'}</div>
         <h3 class="lbl" style="margin:16px 0 8px">Técnicos</h3>
         <div class="plist" id="plist"></div>
@@ -311,14 +312,17 @@ function renderLobby() {
         <div class="banner-info" id="rules"></div>
       </div>
     </div>
+    <div id="lobby-record"></div>
     <div class="panel" style="margin-top:18px"><h2>Livro de regras</h2><div class="lead">Leia antes de começar: vale para todos nesta sala.</div><div id="rulebook"></div></div>
     ${sponsorHTML()}`;
     $('#leave').onclick = leaveRoom;
     fillMail();
+    $('#codebig').onclick = () => $('#codebig').classList.toggle('peek');
     $('#copy').onclick = async () => { const link = location.origin + location.pathname + '?sala=' + code; try { await navigator.clipboard.writeText(`Bora pro leilão no "Acabou o dinheiro?" 💸 Código: ${code} — ${link}`); toast('Convite copiado!'); } catch (e) { toast('Código: ' + code); } };
   }
   const s = state.settings;
   $('#rulebook').innerHTML = rulesHTML(s);
+  $('#lobby-record').innerHTML = recordHTML();
   const nT = state.teams.length, poolEst = Math.ceil(nT * 1.5) + 1 + Math.ceil(nT * 12.5);
   $('#rules').innerHTML = `<b>Pote desta partida:</b> ${poolEst} jogadores sorteados para ${nT * 11} vagas.<br><b>Regras da sala:</b> orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · leilão ${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
   $('#plist').innerHTML = state.teams.map(t => `<div class="prow2">
@@ -377,11 +381,11 @@ function cardHTML(p, hide) {
   const alt = p.a.length ? p.a.map(a => E.POS_PT[a] || a).join(' · ') : 'só ' + posLabel(p);
   const hw = p.h ? `${(p.h / 100).toFixed(2).replace('.', ',')} m · ${p.w} kg` : '—';
   return `<div class="pcard ${tier}">
-    <div class="pc-head"><div><div class="pc-ovr">${hide ? '??' : p.o}</div><div class="pc-pos">${posLabel(p)}</div></div><div class="pc-nat">${flagImg(p)}<span>${esc(p.c)}</span></div></div>
+    <div class="pc-head"><div><div class="pc-ovr${hide ? ' q' : ''}">${hide ? '?' : p.o}</div><div class="pc-pos">${posLabel(p)}</div></div><div class="pc-nat">${flagImg(p)}<span>${esc(p.c)}</span></div></div>
     <div class="pc-shirt">${jerseySVG(p.t, p.n)}</div>
     <div class="pc-name">${esc(p.n)}</div>
     <div class="pc-club">${esc(p.t)}</div>
-    <div class="pc-traits">${(p.k || []).map(k => `<span>${esc(k)}</span>`).join('')}</div>
+    <div class="pc-traits">${p.x ? `<span class="special">★ ${esc(p.x)}</span>` : (p.k && p.k[0] ? `<span>${esc(p.k[0])}</span>` : '')}</div>
     <div class="pc-foot"><div><span>Posições</span><b>${posLabel(p)}${p.a.length ? ' · ' + alt : ''}</b></div><div><span>Altura · peso</span><b>${hw}</b></div></div>
   </div>`;
 }
@@ -399,7 +403,7 @@ function renderAuction() {
           <div id="l-card"></div>
           <div class="lot-right">
             <div class="board">
-              <div><div class="lbl">Lance atual</div><div class="price" id="l-price">€0</div></div>
+              <div><div class="lbl">Lance atual</div><div class="price" id="l-price">R$ 0</div></div>
               <div><div class="lbl">Na frente</div><div class="leader" id="l-leader"></div></div>
             </div>
             <div class="timer"><div class="bar" id="l-bar"></div></div>
@@ -411,7 +415,7 @@ function renderAuction() {
                 <button class="bid" data-inc="10">+10<small></small></button>
                 <button class="bid max" id="l-max">Máx.<small></small></button>
               </div>
-              <div class="custom"><input type="number" id="l-custom" min="1" placeholder="Outro valor (€)"><button class="ghost" id="l-send">Dar lance</button><button class="pass" id="l-pass">Passar</button></div>
+              <div class="custom"><input type="number" id="l-custom" min="1" placeholder="Outro valor (R$)"><button class="ghost" id="l-send">Dar lance</button><button class="pass" id="l-pass">Passar</button></div>
             </div>
             <div class="hint" id="l-hint"></div>
           </div>
@@ -452,7 +456,7 @@ function renderAuction() {
     const p = PLAYERS[lot.pid];
     $('#l-no').textContent = 'LOTE ' + lot.no;
     const fl = E.floorFor(state, p);
-    $('#l-floor').textContent = fl > 1 ? `lance mínimo €${fl}` : '';
+    $('#l-floor').textContent = fl > 1 ? `lance mínimo R$ ${fl}` : '';
     if (lastCardNo !== lot.no) { lastCardNo = lot.no; $('#l-card').innerHTML = cardHTML(p, state.settings.hideOvr); }
     $('#l-price').textContent = fmt(lot.leader ? lot.price : 0);
     const L = lot.leader && teamById(lot.leader);
@@ -537,7 +541,7 @@ function frame() {
       else {
         bar.style.width = Math.min(100, left / sp.open * 100) + '%';
         bar.style.background = left <= 1.5 ? 'var(--red)' : left <= 3 ? 'var(--gold)' : 'var(--green)';
-        if (!lot.leader) { const fl = E.floorFor(state, PLAYERS[lot.pid]); c.textContent = left <= 3 ? 'Ninguém? Última chance…' : 'Lance inicial: €' + fl; c.classList.toggle('hot', left <= 3); }
+        if (!lot.leader) { const fl = E.floorFor(state, PLAYERS[lot.pid]); c.textContent = left <= 3 ? 'Ninguém? Última chance…' : 'Lance inicial: R$ ' + fl; c.classList.toggle('hot', left <= 3); }
         else if (left <= 1) { c.textContent = 'Dou-lhe três…'; c.classList.add('hot'); }
         else if (left <= 2) { c.textContent = 'Dou-lhe duas…'; c.classList.add('hot'); }
         else if (left <= 3) { c.textContent = 'Dou-lhe uma…'; c.classList.remove('hot'); }
@@ -545,6 +549,7 @@ function frame() {
       }
     }
   }
+  if (state && state.phase === 'cup' && view === 'live') { try { liveTick(false); } catch (e) { console.error(e); } }
   if (state && state.phase === 'lineup' && $('#lu-cd')) { const s = Math.max(0, Math.ceil((state.lineupEndsAt - hostNow()) / 1000)); $('#lu-cd').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
   requestAnimationFrame(frame);
 }
@@ -615,57 +620,188 @@ function teamCard(t, rank) {
 }
 
 /* ---------- CAMPEONATO ---------- */
+const KIND = { penalti: 'de pênalti', falta: 'de falta', cabeca: 'de cabeça', jogada: '' };
+const minTxt = m => Math.max(1, Math.min(90, Math.floor(m))) + "'";
+const pn = id => esc(P(id).n);
+function evText(e, m) {
+  const team = teamById(e.s === 'h' ? m.h : m.a), tName = team ? esc(team.name) : '';
+  switch (e.t) {
+    case 'gol': return `⚽ <b>${minTxt(e.m)} GOL ${KIND[e.kind] || ''}!</b> ${pn(e.p)} <small>(${tName})</small>${e.as != null ? ` <small>· assistência de ${pn(e.as)}</small>` : ''}`;
+    case 'penperdido': return `🧤 ${minTxt(e.m)} <b>${pn(e.gk)}</b> pega o pênalti de ${pn(e.p)}`;
+    case 'defesa': return `🧤 ${minTxt(e.m)} Defesaça de ${pn(e.gk)} no chute de ${pn(e.p)}`;
+    case 'chance': return `${minTxt(e.m)} ${pn(e.p)} quase marca`;
+    case 'amarelo': return `🟨 ${minTxt(e.m)} Amarelo para ${pn(e.p)} <small>(${tName})</small>`;
+    case 'vermelho': return `🟥 ${minTxt(e.m)} ${pn(e.p)} é expulso <small>(${tName})</small>`;
+  }
+  return '';
+}
+const scoreAt = (m, min) => [m.ev.filter(e => e.t === 'gol' && e.s === 'h' && e.m <= min).length, m.ev.filter(e => e.t === 'gol' && e.s === 'a' && e.m <= min).length];
 function matchCard(m) {
   const H = teamById(m.h), A = teamById(m.a);
   if (!H || !A) return '';
   const mine = m.h === me.id || m.a === me.id;
-  const names = arr => { const c = {}; arr.forEach(id => { const n = P(id).n; c[n] = (c[n] || 0) + 1; }); return Object.entries(c).map(([n, k]) => esc(n) + (k > 1 ? ` (${k})` : '')).join(', '); };
+  const goals = side => (m.ev || []).filter(e => e.t === 'gol' && e.s === side).map(e => `${pn(e.p)} ${minTxt(e.m)}${e.kind !== 'jogada' ? ' <i>(' + (e.kind === 'penalti' ? 'pên.' : e.kind === 'falta' ? 'falta' : 'cab.') + ')</i>' : ''}`).join('<br>');
   return `<div class="match ${mine ? 'me' : ''}">${m.g ? `<div class="mtag">${esc(m.g)}</div>` : ''}<div class="mrow"><div class="h ${m.played && m.w === m.h ? 'win' : ''}">${tn(m.h)}</div>
     <div class="score ${m.played ? '' : 'pending'}">${m.played ? m.hg + ' × ' + m.ag : 'vs'}</div><div class="a ${m.played && m.w === m.a ? 'win' : ''}">${tn(m.a)}</div></div>
-    ${m.played ? `<div class="scorers"><div>${names(m.sh)}</div><div>${names(m.sa)}</div></div>` : ''}${m.pens ? `<div class="pens">Pênaltis: ${m.pens[0]} × ${m.pens[1]}</div>` : ''}</div>`;
+    ${m.played ? `<div class="scorers"><div>${goals('h')}</div><div>${goals('a')}</div></div>` : ''}${m.pens ? `<div class="pens">Pênaltis: ${m.pens[0]} × ${m.pens[1]}</div>` : ''}
+    ${m.played && m.mvp != null ? `<div class="mvp">⭐ Craque do jogo: <b>${pn(m.mvp)}</b> · nota ${m.r[m.mvp].toFixed(1)}</div>` : ''}</div>`;
 }
-function tableHTML(rows) {
-  return `<table class="std"><tr><th>#</th><th>Time</th><th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr>${E.sortTable(state, rows).map((r, i) => `<tr class="${r.id === me.id ? 'me' : ''}"><td>${i + 1}</td><td>${tn(r.id)}</td><td class="pts">${r.pts}</td><td>${r.j}</td><td>${r.v}</td><td>${r.e}</td><td>${r.d}</td><td>${r.gp - r.gc}</td></tr>`).join('')}</table>`;
+// tabela com o placar parcial da rodada ao vivo
+function liveRows(baseRows, matches, min) {
+  const rows = baseRows.map(r => ({ ...r }));
+  matches.forEach(m => { if (!m.h || !m.a || !m.ev) return; const [hg, ag] = scoreAt(m, min); if (!rows.find(r => r.id === m.h)) return; E.applyTable(rows, { h: m.h, a: m.a, hg, ag }); });
+  return rows;
 }
-function renderCup() {
-  view = 'cup';
-  const cup = state.cup, up = E.upcoming(state);
-  let side = '';
-  if (cup.phase === 'liga') side = `<h3>Classificação</h3>${tableHTML(cup.table)}`;
-  else if (cup.phase === 'grupos') side = cup.groups.map(g => `<div class="grp"><h4>${esc(g.name)}</h4>${tableHTML(g.table)}</div>`).join('') + '<div class="hint">Os 2 primeiros de cada grupo avançam ao mata-mata.</div>';
-  else side = `<h3>Chaveamento</h3><div class="bracket">${cup.ko.map(rd => `<div class="bround"><h4>${E.koName(rd.length * 2)}</h4>${rd.map(m => `<div class="bm"><span class="${m.played && m.w === m.h ? 'w' : ''}">${m.h ? esc(teamById(m.h).name) : 'folga'}</span><span>${m.played && !m.bye ? m.hg + '×' + m.ag + (m.pens ? ' (p)' : '') : '·'}</span><span class="${m.played && m.w === m.a ? 'w' : ''}">${m.a ? esc(teamById(m.a).name) : 'folga'}</span></div>`).join('')}</div>`).join('')}</div>`;
-  if (cup.groups && cup.phase === 'ko') side += cup.groups.map(g => `<div class="grp" style="margin-top:14px"><h4>${esc(g.name)} (final)</h4>${tableHTML(g.table)}</div>`).join('');
-  const sc = E.topScorers(state, 6);
+function tableHTML(rows, prev) {
+  const sorted = E.sortTable(state, rows), before = prev ? E.sortTable(state, prev).map(r => r.id) : null;
+  return `<table class="std"><tr><th>#</th><th>Time</th><th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr>${sorted.map((r, i) => {
+    const was = before ? before.indexOf(r.id) : i, mv = was > i ? '<span class="up">▲</span>' : was < i ? '<span class="down">▼</span>' : '';
+    return `<tr class="${r.id === me.id ? 'me' : ''}"><td>${i + 1}${mv}</td><td>${tn(r.id)}</td><td class="pts">${r.pts}</td><td>${r.j}</td><td>${r.v}</td><td>${r.e}</td><td>${r.d}</td><td>${r.gp - r.gc}</td></tr>`; }).join('')}</table>`;
+}
+function standingsHTML(min) {
+  const cup = state.cup, live = cup.live, ms = live ? E.currentRound(state) : [];
+  if (cup.phase === 'liga') return `<h3>${live ? 'Classificação ao vivo' : 'Classificação'}</h3>${live ? tableHTML(liveRows(cup.table, ms, min), cup.table) : tableHTML(cup.table)}`;
+  if (cup.phase === 'grupos') return cup.groups.map(g => `<div class="grp"><h4>${esc(g.name)}${live ? ' · ao vivo' : ''}</h4>${live ? tableHTML(liveRows(g.table, ms.filter(m => m.g === g.name), min), g.table) : tableHTML(g.table)}</div>`).join('') + '<div class="hint">Os 2 primeiros de cada grupo avançam ao mata-mata.</div>';
+  return `<h3>Chaveamento</h3><div class="bracket">${cup.ko.map(rd => `<div class="bround"><h4>${E.koName(rd.length * 2)}</h4>${rd.map(m => {
+    const isLive = live && rd === cup.ko[cup.ko.length - 1] && m.ev; const sc = isLive ? scoreAt(m, min) : [m.hg, m.ag];
+    const fin = m.played && (!isLive || min >= 90);
+    return `<div class="bm"><span class="${fin && m.w === m.h ? 'w' : ''}">${m.h ? esc(teamById(m.h).name) : 'folga'}</span><span>${m.played && !m.bye ? sc[0] + '×' + sc[1] + (fin && m.pens ? ' (p)' : '') : '·'}</span><span class="${fin && m.w === m.a ? 'w' : ''}">${m.a ? esc(teamById(m.a).name) : 'folga'}</span></div>`; }).join('')}</div>`).join('')}</div>`;
+}
+const STAT_TABS = [['g', 'Artilharia'], ['a', 'Assistências'], ['nota', 'Notas'], ['gk', 'Goleiros'], ['esp', 'Bola parada'], ['cart', 'Cartões']];
+function statsHTML(min) {
+  const tab = ui.stab || 'g', all = E.playerStats(state, min);
+  const row = (r, v) => `<li><span>${pn(r.id)} <small style="color:var(--muted)">· ${esc((teamById(r.team) || {}).name || '')}</small></span><span>${v}</span></li>`;
+  let list = [];
+  if (tab === 'g') list = all.filter(r => r.g).sort((a, b) => b.g - a.g || b.a - a.a).map(r => row(r, r.g));
+  if (tab === 'a') list = all.filter(r => r.a).sort((a, b) => b.a - a.a || b.g - a.g).map(r => row(r, r.a));
+  if (tab === 'nota') list = all.filter(r => r.j).sort((a, b) => b.nt / b.j - a.nt / a.j).map(r => row(r, (r.nt / r.j).toFixed(2) + (r.mvp ? ' ⭐' + r.mvp : '')));
+  if (tab === 'gk') list = all.filter(r => P(r.id).p === 'GK' && (r.cs || r.sv)).sort((a, b) => b.cs - a.cs || b.sv - a.sv).map(r => row(r, `${r.cs} SG · ${r.sv} def.${r.ps ? ' · ' + r.ps + ' pên.' : ''}`));
+  if (tab === 'esp') list = all.filter(r => r.gf || r.gp || r.gh).sort((a, b) => (b.gf + b.gp + b.gh) - (a.gf + a.gp + a.gh)).map(r => row(r, [r.gf ? r.gf + ' falta' : '', r.gp ? r.gp + ' pên.' : '', r.gh ? r.gh + ' cab.' : ''].filter(Boolean).join(' · ')));
+  if (tab === 'cart') list = all.filter(r => r.ya || r.rc).sort((a, b) => (b.rc * 3 + b.ya) - (a.rc * 3 + a.ya)).map(r => row(r, `${r.ya ? '🟨' + r.ya : ''} ${r.rc ? '🟥' + r.rc : ''}`));
+  return `<div class="stabs">${STAT_TABS.map(([k, l]) => `<button data-st="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <ul class="scorerlist">${list.slice(0, 8).join('') || '<li><span style="color:var(--muted)">Nada por aqui ainda</span><span></span></li>'}</ul>`;
+}
+function bindStatTabs(root) { root.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { ui.stab = b.dataset.st; renderCup(true); }); }
+
+let viewer = null, liveKey = '', lastNotif = -1, feed = [];
+function renderCup(force) {
+  const cup = state.cup;
+  if (cup.live) return renderLive(force);
+  view = 'cup'; liveKey = '';
+  const up = E.upcoming(state);
   app.innerHTML = `
   <div class="ah"><h2>${cup.last ? esc(cup.last.title) : 'Campeonato'}</h2><div class="prog">${{ liga:'Pontos corridos', mata:'Mata-mata', grupos:'Grupos + mata-mata' }[cup.format]} · próximo: ${esc(E.nextTitle(state))}</div></div>
   <div class="cgrid">
     <div>
-      ${cup.last ? `<div class="lbl" style="margin:0 0 8px">Resultados</div><div class="matches">${cup.last.matches.map(matchCard).join('')}</div>` : ''}
-      ${up.length ? `<div class="lbl" style="margin:18px 0 8px">Próximos jogos · ${esc(E.nextTitle(state))}</div><div class="matches">${up.filter(m => m.h && m.a).map(matchCard).join('')}</div>` : ''}
-      <div class="ctrl">${isHost ? `<button class="gold" id="c-next">Jogar ${esc(E.nextTitle(state).toLowerCase())}</button><button class="ghost" id="c-all">Simular tudo</button>` : '<span class="lead" style="margin:0">O anfitrião controla as rodadas.</span>'}<button class="ghost" id="c-sq">Ver elencos</button></div>
+      ${up.length ? `<div class="panel" style="padding:16px;margin-bottom:14px"><div class="lbl" style="margin:0 0 8px">Próximos jogos · ${esc(E.nextTitle(state))}</div><div class="matches">${up.map(matchCard).join('')}</div>
+        <div class="ctrl">${isHost ? `<span class="lbl" style="align-self:center">Velocidade</span><div class="seg speeds">${E.SPEEDS_LIVE.map(s => `<button data-sp="${s}" class="${(ui.liveSpeed || 4) === s ? 'on' : ''}">${s}x</button>`).join('')}</div>
+          <button class="gold" id="c-watch">▶ Assistir a rodada</button><button class="ghost" id="c-all">Simular o resto do campeonato</button>` : '<span class="lead" style="margin:0">O anfitrião vai começar a rodada.</span>'}</div></div>` : ''}
+      ${cup.last ? `<div class="lbl" style="margin:0 0 8px">Resultados · ${esc(cup.last.title)}</div><div class="matches">${cup.last.matches.map(matchCard).join('')}</div>` : ''}
+      <div class="ctrl"><button class="ghost" id="c-sq">Ver elencos</button></div>
     </div>
-    <div class="side"><div class="box">${side}</div>
-      <div class="box"><h3>Artilharia</h3><ul class="scorerlist">${sc.length ? sc.map(s => `<li><span>${esc(P(s.id).n)} <small style="color:var(--muted)">· ${esc(teamById(s.team).name)}</small></span><span>${s.g}</span></li>`).join('') : '<li><span style="color:var(--muted)">Nenhum gol ainda</span><span></span></li>'}</ul></div>
-    </div>
+    <div class="side"><div class="box">${standingsHTML(90)}</div><div class="box" id="c-stats">${statsHTML()}</div></div>
   </div>`;
-  $('#c-sq').onclick = showSquads;
-  if (isHost) {
-    $('#c-next').onclick = () => { E.advanceCup(state); publish(); };
-    $('#c-all').onclick = () => { let g = 0; while (!state.cup.done && g++ < 300) E.advanceCup(state); publish(); };
+  $('#c-sq').onclick = showSquads; bindStatTabs($('#c-stats'));
+  if (isHost && up.length) {
+    app.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => { ui.liveSpeed = +b.dataset.sp; app.querySelectorAll('[data-sp]').forEach(x => x.classList.toggle('on', x === b)); });
+    $('#c-watch').onclick = () => { E.startRound(state, Date.now(), ui.liveSpeed || 4); publish(); };
+    $('#c-all').onclick = () => { let g = 0; while (!state.cup.done && g++ < 300) { if (state.cup.live) E.commitRound(state); else E.advanceCup(state); } publish(); };
   }
+}
+function liveMatches() { return E.currentRound(state).filter(m => m.h && m.a && m.ev); }
+function renderLive(force) {
+  const cup = state.cup, key = cup.live.title + '|' + cup.live.at;
+  const ms = liveMatches();
+  if (view !== 'live' || liveKey !== cup.live.title) {
+    view = 'live'; liveKey = cup.live.title; lastNotif = -1; feed = [];
+    const mine = ms.find(m => m.h === me.id || m.a === me.id);
+    ui.watch = (mine || ms[0] || {}).h + '|' + (mine || ms[0] || {}).a;
+    app.innerHTML = `
+    <div class="ah"><h2>${esc(cup.live.title)}</h2><div class="prog" id="lv-speed"></div></div>
+    <div class="cgrid">
+      <div>
+        <div class="panel live-panel">
+          <div class="sboard"><div class="sb-team" id="sb-h"></div><div class="sb-mid"><div class="sb-score" id="sb-score">0 × 0</div><div class="sb-clock" id="sb-clock">0'</div></div><div class="sb-team" id="sb-a"></div></div>
+          <canvas id="pitch2d" class="pitch2d"></canvas>
+          <div class="pens-live" id="pens-live"></div>
+          <div class="chips-m" id="lv-matches"></div>
+          ${isHost ? `<div class="ctrl"><span class="lbl" style="align-self:center">Velocidade</span><div class="seg speeds">${E.SPEEDS_LIVE.map(s => `<button data-sp="${s}">${s}x</button>`).join('')}</div><button class="ghost" id="lv-skip">Pular para o fim da rodada</button></div>` : ''}
+        </div>
+        <div class="box"><h3>Lance a lance</h3><ul class="feed" id="lv-feed"></ul></div>
+      </div>
+      <div class="side"><div class="box" id="lv-table"></div><div class="box" id="lv-stats"></div><div class="box"><h3>Gols da rodada</h3><ul class="feed small" id="lv-goals"></ul></div></div>
+    </div>`;
+    viewer = createViewer($('#pitch2d'));
+    if (isHost) {
+      app.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => { E.setLiveSpeed(state, Date.now(), +b.dataset.sp); ui.liveSpeed = +b.dataset.sp; publish(); });
+      $('#lv-skip').onclick = () => { E.skipLive(state, Date.now()); publish(); };
+    }
+  }
+  // seletor de jogos
+  const min = E.liveMinute(cup.live, hostNow());
+  $('#lv-matches').innerHTML = ms.map(m => { const [a, b] = scoreAt(m, min); const k = m.h + '|' + m.a; return `<button data-w="${esc(k)}" class="${ui.watch === k ? 'on' : ''}">${esc(teamById(m.h).name)} <b>${a}×${b}</b> ${esc(teamById(m.a).name)}</button>`; }).join('');
+  app.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { ui.watch = b.dataset.w; feed = []; lastNotif = -1; renderLive(); });
+  app.querySelectorAll('[data-sp]').forEach(b => b.classList.toggle('on', +b.dataset.sp === cup.live.speed));
+  $('#lv-speed').textContent = `Velocidade ${cup.live.speed}x · ${cup.live.speed === 2 ? '6' : cup.live.speed === 4 ? '3' : '2'} min por jogo`;
+  const wm = ms.find(m => m.h + '|' + m.a === ui.watch) || ms[0];
+  if (wm) { viewer.setMatch(wm, teamById(wm.h), teamById(wm.a), state); $('#sb-h').innerHTML = tn(wm.h); $('#sb-a').innerHTML = tn(wm.a); }
+  liveTick(true);
+}
+// chamado a cada quadro durante a rodada ao vivo
+function liveTick(force) {
+  if (view !== 'live' || !state.cup || !state.cup.live) return;
+  const l = state.cup.live, now = hostNow(), min = E.liveMinute(l, now), ht = E.isHalftime(l, now);
+  const ms = liveMatches(), wm = ms.find(m => m.h + '|' + m.a === ui.watch) || ms[0];
+  if (!wm) return;
+  viewer.draw(min, ht);
+  const [a, b] = scoreAt(wm, min);
+  $('#sb-score').textContent = `${a} × ${b}`;
+  $('#sb-clock').textContent = ht ? 'Intervalo' : min >= 90 ? 'Fim de jogo' : (min < 45 ? '1º T · ' : '2º T · ') + Math.floor(min) + "'";
+  // pênaltis depois dos 90'
+  const pl = $('#pens-live');
+  if (min >= 90 && wm.shoot && l.endAt) {
+    const n = Math.min(wm.shoot.length, Math.floor((now - l.endAt) / 450) + 1);
+    const kicks = wm.shoot.slice(0, n); const ph = kicks.filter(k => k.s === 'h' && k.ok).length, pa = kicks.filter(k => k.s === 'a' && k.ok).length;
+    pl.innerHTML = `<b>Pênaltis ${ph} × ${pa}</b> ${kicks.map(k => `<span class="${k.ok ? 'ok' : 'x'}" title="${pn(k.p)}">${k.ok ? '●' : '○'}</span>`).join('')}`;
+  } else pl.innerHTML = '';
+  const step = Math.floor(min * 4);
+  if (!force && step === lastNotif) return;
+  // notificações: gols e lances importantes de todos os jogos; lance a lance do jogo assistido
+  const prev = lastNotif < 0 ? -1 : lastNotif / 4; lastNotif = step;
+  ms.forEach(m => m.ev.forEach(e => {
+    if (e.m > min || e.m <= prev) return;
+    if (prev >= 0 && e.t === 'gol') toast((m === wm ? '⚽ ' : '⚽ ') + `${minTxt(e.m)} ${P(e.p).n} (${teamById(e.s === 'h' ? m.h : m.a).name})${e.kind !== 'jogada' ? ' ' + KIND[e.kind] : ''}`);
+    if (prev >= 0 && e.t === 'penperdido') toast(`🧤 ${P(e.gk).n} pega pênalti!`);
+  }));
+  $('#lv-feed').innerHTML = wm.ev.filter(e => e.m <= min).reverse().map(e => `<li class="ev-${e.t}">${evText(e, wm)}</li>`).join('') || '<li class="empty">Bola rolando…</li>';
+  $('#lv-goals').innerHTML = ms.flatMap(m => m.ev.filter(e => (e.t === 'gol' || e.t === 'vermelho') && e.m <= min).map(e => ({ e, m }))).sort((x, y) => y.e.m - x.e.m).map(({ e, m }) => `<li>${evText(e, m)}</li>`).join('') || '<li class="empty">Nenhum gol ainda</li>';
+  $('#lv-table').innerHTML = standingsHTML(min);
+  $('#lv-stats').innerHTML = statsHTML(min); bindStatTabs($('#lv-stats'));
 }
 
 /* ---------- FIM ---------- */
+function recordHTML() {
+  const rec = state.record; if (!rec || !Object.keys(rec).length) return '';
+  const rows = Object.entries(rec).map(([id, r]) => ({ id, ...r })).sort((a, b) => b.tit - a.tit || b.vice - a.vice || b.v - a.v || (b.gp - b.gc) - (a.gp - a.gc));
+  return `<div class="panel" style="margin-top:18px"><h2>Histórico da sala</h2><div class="lead">Somando todas as partidas jogadas nesta sala.</div>
+    <table class="std"><tr><th>#</th><th>Time</th><th>🏆</th><th>Vice</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr>${rows.map((r, i) => `<tr class="${r.id === me.id ? 'me' : ''}"><td>${i + 1}</td><td style="font-family:Archivo;font-weight:700">${esc(r.name)} <small style="color:var(--muted);font-weight:500">${esc(r.coach)}</small></td><td class="pts">${r.tit}</td><td>${r.vice}</td><td>${r.j}</td><td>${r.v}</td><td>${r.e}</td><td>${r.d}</td><td>${r.gp - r.gc}</td></tr>`).join('')}</table></div>`;
+}
 function renderEnd() {
   view = 'end';
   const order = state.cup.final, champ = teamById(order[0]), mt = myTeam();
   const fmtName = state.cup.format;
   const myPos = mt ? order.indexOf(mt.id) + 1 : 0;
   const posTxt = n => fmtName === 'liga' ? n + 'º lugar' : n === 1 ? 'Campeão' : n === 2 ? 'Vice-campeão' : n <= 4 ? 'Semifinalista' : 'Eliminado antes da semi';
-  const top = E.topScorers(state, 1)[0];
+  const ps = E.playerStats(state);
+  const top = ps.filter(r => r.g).sort((a, b) => b.g - a.g || b.a - a.a)[0];
+  const ast = ps.filter(r => r.a).sort((a, b) => b.a - a.a || b.g - a.g)[0];
+  const minJ = Math.max(1, Math.ceil(Math.max(...ps.map(r => r.j)) / 2));
+  const best = ps.filter(r => r.j >= minJ).sort((a, b) => b.nt / b.j - a.nt / a.j)[0];
+  const wall = ps.filter(r => P(r.id).p === 'GK').sort((a, b) => b.cs - a.cs || b.sv - a.sv)[0];
   const all = state.teams.flatMap(t => t.squad.filter(id => !P(id).base).map(id => ({ id, p: P(id), price: t.paid[id], team: t })));
   const steal = all.slice().sort((a, b) => (b.p.o - b.price * 0.5) - (a.p.o - a.price * 0.5))[0];
   const exp = all.slice().sort((a, b) => b.price - a.price)[0];
+  const tnm = r => esc((teamById(r.team) || {}).name || '');
   const card = (l, b, s) => `<div class="award"><div class="lbl">${l}</div><div class="big">${b}</div><div class="small">${s}</div></div>`;
   app.innerHTML = `
   <div class="champ">
@@ -675,7 +811,10 @@ function renderEnd() {
     <p>${champ.id === me.id ? 'É CAMPEÃO! Seu leilão foi cirúrgico.' : `Técnico: ${esc(champ.coach)}${mt ? ` · Você: ${posTxt(myPos)}` : ''}`}</p>
   </div>
   <div class="endgrid">
-    ${card('Artilheiro', top ? esc(P(top.id).n) : '—', top ? `${top.g} gols · ${esc(teamById(top.team).name)}` : '')}
+    ${card('Artilheiro', top ? pn(top.id) : '—', top ? `${top.g} gols${top.gp ? ' (' + top.gp + ' de pênalti)' : ''} · ${tnm(top)}` : '')}
+    ${card('Garçom', ast ? pn(ast.id) : '—', ast ? `${ast.a} assistências · ${tnm(ast)}` : '')}
+    ${card('Craque do campeonato', best ? pn(best.id) : '—', best ? `nota média ${(best.nt / best.j).toFixed(2)} · ${tnm(best)}` : '')}
+    ${card('Paredão', wall ? pn(wall.id) : '—', wall ? `${wall.cs} jogos sem sofrer gol · ${wall.sv} defesas · ${tnm(wall)}` : '')}
     ${card('Pechincha do leilão', steal ? esc(steal.p.n) : '—', steal ? `${esc(steal.team.name)} · ${fmt(steal.price)} · OVR ${steal.p.o}` : '')}
     ${card('Compra mais cara', exp ? esc(exp.p.n) : '—', exp ? `${esc(exp.team.name)} · ${fmt(exp.price)} · OVR ${exp.p.o}` : '')}
   </div>
@@ -685,13 +824,17 @@ function renderEnd() {
     ${sponsorHTML('mini')}
     <div class="ctrl"><button class="gold" id="e-copy">Copiar resultado</button><button class="ghost" id="e-sq">Ver elencos</button>
       ${isHost ? '<button class="ghost" id="e-again">Nova partida (mesma sala)</button>' : ''}<button class="ghost" id="e-leave">Sair</button></div>
-  </div>`;
+  </div>
+  ${recordHTML()}`;
   let txt = `💸 ACABOU O DINHEIRO? · Sala ${code}\n🏆 Campeão: ${champ.name} (${champ.coach})\n`;
   if (mt) {
-    const best = mt.squad.filter(id => !P(id).base).sort((a, b) => mt.paid[b] - mt.paid[a])[0];
-    txt += `Meu time: ${mt.name} · ${mt.formation} · OVR ${E.teamOvr(state, mt).toFixed(1)}\nResultado: ${posTxt(myPos)}\nMaior compra: ${best != null ? P(best).n + ' por €' + mt.paid[best] : '—'}\nSobrou no caixa: €${mt.budget}\n`;
+    const bst = mt.squad.filter(id => !P(id).base).sort((a, b) => mt.paid[b] - mt.paid[a])[0];
+    txt += `Meu time: ${mt.name} · ${mt.formation} · OVR ${E.teamOvr(state, mt).toFixed(1)}\nResultado: ${posTxt(myPos)}\nMaior compra: ${bst != null ? P(bst).n + ' por R$ ' + mt.paid[bst] : '—'}\nSobrou no caixa: R$ ${mt.budget}\n`;
   }
   if (top) txt += `⚽ Artilheiro: ${P(top.id).n} (${top.g})\n`;
+  if (best) txt += `⭐ Craque: ${P(best.id).n}\n`;
+  const rec = state.record && mt && state.record[mt.id];
+  if (rec && rec.ed > 1) txt += `Histórico na sala: ${rec.tit} título(s) em ${rec.ed} partidas\n`;
   txt += `Joga também: ${location.origin}${location.pathname}\n`;
   $('#e-share').value = txt + 'Bora a próxima?';
   $('#e-copy').onclick = async () => { try { await navigator.clipboard.writeText($('#e-share').value); toast('Copiado!'); } catch (e) { $('#e-share').select(); toast('Selecionado: use Copiar'); } };
@@ -699,7 +842,7 @@ function renderEnd() {
   $('#e-leave').onclick = leaveRoom;
   fillMail();
   if (isHost) $('#e-again').onclick = () => {
-    state.phase = 'lobby'; state.cup = null; state.lot = null; state.base = {}; state.log = [];
+    state.phase = 'lobby'; state.cup = null; state.lot = null; state.base = {}; state.log = []; state.history = []; state.penal = {};
     state.teams.forEach(t => { t.squad = []; t.lineup = null; t.ready = false; t.budget = state.settings.budget; t.paid = {}; });
     publish();
   };
@@ -720,6 +863,16 @@ function showRules() {
   $('#mbg').onclick = e => { if (e.target.id === 'mbg') $('#modal').innerHTML = ''; };
 }
 $('#rules-btn').onclick = showRules;
+/* ---------- tema e modo streamer (preferência de cada jogador, guardada no navegador) ---------- */
+function applyPrefs() {
+  let th = 'dark', sm = false; try { th = localStorage.getItem('acabou-theme') || 'dark'; sm = localStorage.getItem('acabou-streamer') === '1'; } catch (e) {}
+  document.body.classList.toggle('light', th === 'light'); document.body.classList.toggle('streamer', sm);
+  $('#theme-btn').textContent = th === 'light' ? '🌙' : '☀'; $('#theme-btn').title = th === 'light' ? 'Tema escuro' : 'Tema claro';
+  $('#streamer-btn').classList.toggle('on', sm); $('#streamer-btn').textContent = sm ? 'Streamer: ligado' : 'Modo streamer';
+}
+$('#theme-btn').onclick = () => { try { localStorage.setItem('acabou-theme', document.body.classList.contains('light') ? 'dark' : 'light'); } catch (e) {} applyPrefs(); };
+$('#streamer-btn').onclick = () => { try { localStorage.setItem('acabou-streamer', document.body.classList.contains('streamer') ? '0' : '1'); } catch (e) {} applyPrefs(); toast(document.body.classList.contains('streamer') ? 'Modo streamer ligado: código da sala escondido' : 'Modo streamer desligado'); };
+applyPrefs();
 function askName(cb) {
   $('#modal').innerHTML = `<div class="modal"><div class="inner" style="max-width:480px">
     <h2 style="margin-bottom:6px">Bem-vindo à sala</h2><div class="lead">Como você quer aparecer para os outros técnicos?</div>

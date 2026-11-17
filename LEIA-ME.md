@@ -1,6 +1,6 @@
 # Acabou o dinheiro?
 
-Leilão de futebol multiplayer: cada técnico tem €100 para montar 11 titulares e os times disputam um campeonato simulado.
+Leilão de futebol multiplayer: cada técnico tem R$ 100 para montar 11 titulares e os times disputam um campeonato simulado.
 Base: 339 jogadores masculinos com OVR 81+ das 5 grandes ligas e dos clubes da Champions e da Europa League 2026/27.
 
 ## Arquivos

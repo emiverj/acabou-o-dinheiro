@@ -360,3 +360,81 @@ a.logo{color:inherit;text-decoration:none}
 .pc-traits span{font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;padding:4px 8px;border-radius:999px;background:rgba(255,200,51,.14);border:1px solid rgba(255,200,51,.5);color:#ffe08a}
 .st-off{color:var(--red);font-weight:700}
 @media (max-width:900px){ .pcard{max-width:320px} }
+
+/* ===== v4 ===== */
+/* cartas: dourada e prata claras com texto escuro */
+.pcard{color:#f6f1e2}
+.pcard.gold{background:linear-gradient(160deg,#f8dc84,#d9a93a 55%,#b9861f);border-color:#fff1b8;color:#2a1c02}
+.pcard.silver{background:linear-gradient(160deg,#eef1f4,#bfc7ce 55%,#9aa4ad);border-color:#ffffff;color:#1d252c}
+.pcard.gold .pc-pos{color:#6b4500}.pcard.silver .pc-pos{color:#36424d}
+.pcard.gold .pc-club,.pcard.gold .pc-nat span{color:#3d2a05}.pcard.silver .pc-club,.pcard.silver .pc-nat span{color:#2a343c}
+.pcard.gold .pc-foot,.pcard.silver .pc-foot{border-top-color:rgba(0,0,0,.18)}
+.pcard.gold .pc-foot span{color:#6b4f12}.pcard.silver .pc-foot span{color:#4d5862}
+.pcard.gold .pc-foot b,.pcard.silver .pc-foot b{color:inherit}
+.pcard.gold .pc-traits span,.pcard.silver .pc-traits span{background:rgba(0,0,0,.12);border-color:rgba(0,0,0,.35);color:inherit}
+.pcard.elite .pc-pos{color:#d9c2ff}
+.pc-ovr.q{font-size:52px;line-height:.85;color:var(--gold)}
+.pcard.gold .pc-ovr.q,.pcard.silver .pc-ovr.q{color:inherit}
+.pc-traits .special{background:linear-gradient(90deg,#ffc833,#ff9a3d)!important;color:#1b1000!important;border:0!important;box-shadow:0 0 14px rgba(255,200,51,.55);font-size:12px}
+/* rodada ao vivo */
+.live-panel{padding:14px}
+.sboard{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;margin-bottom:10px}
+.sb-team{font-weight:800;font-size:17px}
+.sb-team:first-child{text-align:right}
+.sb-mid{text-align:center}
+.sb-score{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:34px;background:#050f09;border-radius:10px;padding:2px 16px;color:var(--gold)}
+.sb-clock{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--muted);margin-top:4px}
+.pitch2d{width:100%;display:block;border-radius:12px;border:2px solid rgba(243,236,216,.25)}
+.pens-live{text-align:center;margin-top:8px;font-family:'IBM Plex Mono',monospace;color:var(--gold);letter-spacing:2px}
+.pens-live .x{color:var(--red)}
+.chips-m{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chips-m button{background:var(--bg2);border:1px solid var(--line2);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600}
+.chips-m button.on{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset}
+.seg.speeds{flex:none}
+.seg.speeds button{flex:none;padding:8px 12px}
+.feed{list-style:none;max-height:320px;overflow:auto;font-size:14px}
+.feed li{padding:7px 2px;border-bottom:1px dashed var(--line);line-height:1.4}
+.feed li small{color:var(--muted)}
+.feed li.ev-gol{color:var(--gold)}
+.feed li.ev-chance,.feed li.ev-defesa{color:var(--muted)}
+.feed.small{font-size:13px;max-height:260px}
+.mvp{text-align:center;font-size:12px;color:var(--muted);margin-top:6px}
+.scorers i{font-style:normal;color:var(--gold);font-size:11px}
+.stabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+.stabs button{background:transparent;border:1px solid var(--line2);border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;color:var(--muted)}
+.stabs button.on{background:var(--gold);color:#1b1503;border-color:var(--gold)}
+table.std .up{color:var(--green);font-size:9px;margin-left:2px}
+table.std .down{color:var(--red);font-size:9px;margin-left:2px}
+.ghost.small.icon{width:34px;padding:6px 0}
+.ghost.on{border-color:var(--gold);color:var(--gold)}
+/* modo streamer: código escondido e tudo um pouco maior */
+.streamer-note{display:none;font-size:12px;color:var(--gold);margin-top:6px}
+body.streamer .streamer-note{display:block}
+body.streamer .code-big{filter:blur(9px);cursor:pointer;user-select:none}
+body.streamer .code-big.peek{filter:none}
+body.streamer .wrap{max-width:1400px}
+body.streamer .pcard{transform:scale(1.06);transform-origin:top left}
+body.streamer .price{font-size:66px}
+body.streamer .call{font-size:28px}
+body.streamer .feed,body.streamer .tline,body.streamer table.std{font-size:15px}
+body.streamer .site-foot .contact{display:none}
+/* tema claro */
+body.light{--bg:#f3efe4;--bg2:#ffffff;--card:#fffdf7;--card2:#f6f1e3;--line:rgba(20,40,28,.12);--line2:rgba(20,40,28,.22);--chalk:#14261b;--muted:#5e6f63;--gold:#b98200;--red:#d8392b;--green:#1f9d5a}
+body.light{background-color:#f3efe4;background-image:radial-gradient(ellipse 80% 50% at 50% -8%,rgba(31,157,90,.12),transparent 70%)}
+body.light .lot{background:linear-gradient(165deg,#ffffff,#f1ead8 70%)}
+body.light .board,body.light .score,body.light .sb-score,body.light .code-big{background:#14261b;color:#ffc833}
+body.light .board .lbl{color:#9fb3a5}
+body.light .board .leader{color:#f3ecd8}
+body.light .bid{background:#14261b;color:#f3ecd8}
+body.light .bid:hover:not(:disabled){background:#22402c}
+body.light .bid.max,body.light .gold,body.light .cta,body.light .seg button.on,body.light .stabs button.on{color:#1b1503;background:#ffc833}
+body.light .tag.host,body.light .sp-tag{background:#ffc833}
+body.light .stamp{background:rgba(255,253,247,.9)}
+body.light .hero h1 em,body.light .logo b,body.light .logo .q{color:#b98200}
+body.light .pcard.neutral,body.light .pcard.elite{color:#f6f1e2}
+body.light .quote{background:#fffdf7}
+body.light .rulebook{color:#2b3a30}
+body.light .sponsor .sp-body span{color:#3d4d42}
+body.light .modal .inner{background:#f3efe4}
+body.light .netbadge.on{color:#1f9d5a}
+body.light .toast{background:#14261b;color:#f3ecd8}
