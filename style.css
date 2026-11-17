@@ -745,3 +745,5 @@ body[data-mode=copa]:not(.light) .seg.tiles button.on{background:color-mix(in sr
 .support p{margin:0 0 10px;color:var(--chalk2,inherit);font-size:14px;line-height:1.4}
 .support .hint{margin-top:6px}
 @media (max-width:640px){ .support{flex-direction:column;text-align:center} }
+/* formatos de campeonato: 2×2 no celular */
+@media (max-width:640px){ .seg.tiles.fmt{grid-auto-flow:row;grid-template-columns:1fr 1fr} .seg.tiles.fmt button{min-height:70px;min-width:0} }

@@ -243,7 +243,10 @@ export function playMatch(state, h, a, knockout, neutral) {
   const hg = ev.filter(e => e.t === 'gol' && e.s === 'h').length, ag = ev.filter(e => e.t === 'gol' && e.s === 'a').length;
   const m = { h: h.id, a: a.id, hg, ag, ev, played: true };
   m.sh = ev.filter(e => e.t === 'gol' && e.s === 'h').map(e => e.p); m.sa = ev.filter(e => e.t === 'gol' && e.s === 'a').map(e => e.p);
-  if (knockout && hg === ag) {
+  // jogo de volta: knockout = { agg: [gols do mandante, gols do visitante] na ida }; empate no agregado vai para os pênaltis
+  const agg = knockout && knockout.agg ? [hg + knockout.agg[0], ag + knockout.agg[1]] : null;
+  if (agg) m.agg = agg;
+  if (knockout && (agg ? agg[0] === agg[1] : hg === ag)) {
     const kp = (t, o) => 0.75 + (strength(state, t).a - strength(state, o).d) * 0.004;
     const th = takers(state, h), ta = takers(state, a); const shoot = []; let ph = 0, pa = 0, i = 0;
     while (true) {
@@ -255,6 +258,8 @@ export function playMatch(state, h, a, knockout, neutral) {
     m.pens = [ph, pa]; m.shoot = shoot;
   }
   m.w = hg > ag ? h.id : ag > hg ? a.id : m.pens ? (m.pens[0] > m.pens[1] ? h.id : a.id) : null;
+  // quem avança no mata-mata (no jogo de volta, pelo agregado)
+  if (knockout) m.adv = agg && agg[0] !== agg[1] ? (agg[0] > agg[1] ? h.id : a.id) : m.w;
   // notas dos jogadores
   m.r = {};
   for (const side of ['h', 'a']) {
@@ -358,7 +363,7 @@ export function createCup(state) {
   let format = state.settings.format;
   if (format === 'grupos' && ids.length < 6) format = 'liga';
   const cup = { format, phase: null, ri: 0, ko: [], done: false, live: null, speed: LIVE_DEFAULT };
-  if (format === 'liga') { cup.phase = 'liga'; cup.rounds = roundRobin(ids, ids.length <= 4); cup.table = ids.map(emptyRow); }
+  if (format === 'liga' || format === 'ligafinal') { cup.phase = 'liga'; cup.rounds = roundRobin(ids, ids.length <= 4); cup.table = ids.map(emptyRow); }
   else if (format === 'mata') { cup.phase = 'ko'; cup.ko = [buildKO(shuffle(ids.slice()))]; }
   else {
     cup.phase = 'grupos';
@@ -387,8 +392,9 @@ export function nextTitle(state) {
   const cup = state.cup; if (!cup || cup.done) return '';
   if (cup.phase === 'liga') return `Rodada ${cup.ri + 1} de ${cup.rounds.length}`;
   if (cup.phase === 'grupos') return `Fase de grupos · rodada ${cup.ri + 1} de ${cup.groupRounds}`;
-  return koName(cup.ko[cup.ko.length - 1].length * 2);
+  return roundName(cup.ko[cup.ko.length - 1]);
 }
+export function roundName(rd) { const n = koName(rd.length * 2); return rd[0] && rd[0].leg ? `${n} · ${rd[0].leg === 1 ? 'ida' : 'volta'}` : n; }
 export function upcoming(state) { return currentRound(state).filter(m => m.h && m.a && !m.played); }
 
 /* Relógio da rodada ao vivo: 1x = 12 minutos reais para 90 minutos (dois tempos de 6 min) */
@@ -403,14 +409,24 @@ function liveParts(l, now) {
 }
 export const liveMinute = (l, now) => liveParts(l, now).m;
 export const isHalftime = (l, now) => liveParts(l, now).ht;
+// joga uma partida do campeonato com as regras da fase: ida (empate vale), volta (agregado) ou jogo único (neutro, pênaltis)
+function playCup(state, m) {
+  const cup = state.cup, H = T(state, m.h), A = T(state, m.a);
+  botTactics(state, H, A);
+  let ko = cup.phase === 'ko', neutral = ko;
+  if (m.leg === 1) { ko = false; neutral = false; }
+  else if (m.leg === 2) { const ida = m.ida; ko = { agg: [ida.ag, ida.hg] }; neutral = false; }
+  const leg = m.leg, ida = m.ida;
+  Object.assign(m, playMatch(state, H, A, ko, neutral));
+  if (leg) { m.leg = leg; if (ida) m.ida = ida; }
+}
 export function startRound(state, now, speed) {
   const cup = state.cup; if (!cup || cup.done || cup.live) return;
   const ms = currentRound(state);
   ms.forEach(m => {
     if (m.played) return;
     if (!m.h || !m.a) { m.played = true; m.bye = true; m.w = m.h || m.a; return; }
-    botTactics(state, T(state, m.h), T(state, m.a));
-    Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), cup.phase === 'ko', cup.phase === 'ko'));
+    playCup(state, m);
   });
   cup.live = { at: now, base: 0, speed: speed || cup.speed || LIVE_DEFAULT, title: nextTitle(state), endAt: 0 };
 }
@@ -431,12 +447,19 @@ export function tickLive(state, now) {
 export function commitRound(state) {
   const cup = state.cup; if (!cup || cup.done) return;
   const ms = currentRound(state);
-  if (ms.some(m => !m.played)) { cup.live = cup.live || { at: Date.now(), base: 90, speed: 6 }; ms.forEach(m => { if (!m.played) { if (!m.h || !m.a) { m.played = true; m.bye = true; m.w = m.h || m.a; } else { botTactics(state, T(state, m.h), T(state, m.a)); Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), cup.phase === 'ko', cup.phase === 'ko')); } } }); }
+  if (ms.some(m => !m.played)) { cup.live = cup.live || { at: Date.now(), base: 90, speed: 6 }; ms.forEach(m => { if (!m.played) { if (!m.h || !m.a) { m.played = true; m.bye = true; m.w = m.h || m.a; } else playCup(state, m); } }); }
   cup.last = { title: nextTitle(state), matches: ms.filter(m => !m.bye) };
   cup.live = null;
   if (cup.phase === 'liga') {
     ms.forEach(m => applyTable(cup.table, m)); cup.ri++;
-    if (cup.ri >= cup.rounds.length) finishCup(state, sortTable(state, cup.table).map(r => r.id));
+    if (cup.ri >= cup.rounds.length) {
+      const order = sortTable(state, cup.table).map(r => r.id);
+      if (cup.format === 'ligafinal' && order.length >= 3) {
+        cup.seed = order; cup.phase = 'ko'; cup.ri = 0;
+        // 4 ou mais times: semifinal 1º×4º e 2º×3º em ida e volta (o mais bem colocado decide em casa); 3 times: final entre os 2 primeiros
+        cup.ko = order.length >= 4 ? [[{ h: order[3], a: order[0], leg: 1 }, { h: order[2], a: order[1], leg: 1 }]] : [[{ h: order[0], a: order[1] }]];
+      } else finishCup(state, order);
+    }
     return;
   }
   if (cup.phase === 'grupos') {
@@ -451,6 +474,14 @@ export function commitRound(state) {
       else cup.ko = [buildKO(f1.concat(s2))];
       cup.phase = 'ko'; cup.ri = 0;
     }
+    return;
+  }
+  if (ms[0] && ms[0].leg === 1) { cup.ko.push(ms.map(m => ({ h: m.a, a: m.h, leg: 2, ida: { hg: m.hg, ag: m.ag } }))); return; }
+  if (ms[0] && ms[0].leg === 2) { cup.ko.push([{ h: ms[0].adv, a: ms[1].adv }]); return; }
+  if (ms.length === 1 && cup.seed) {
+    // pontos corridos + finais: campeão, vice, semifinalistas e o resto pela ordem da liga
+    const f = ms[0], champ = f.adv || f.w, vice = champ === f.h ? f.a : f.h;
+    finishCup(state, [champ, vice, ...cup.seed.filter(id => id !== champ && id !== vice)]);
     return;
   }
   if (ms.length === 1) {
