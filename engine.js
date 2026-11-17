@@ -652,6 +652,7 @@ function closeLot(state, winnerId, price, now) {
   state.history.push({ no: lot.no, pid: lot.pid, team: winnerId || null, price: winnerId ? price : 0 });
   if (winnerId) {
     const t = state.teams.find(x => x.id === winnerId); t.budget -= price; t.squad.push(lot.pid); t.paid[lot.pid] = price;
+    lockVersions(state, p);
     placeNew(state, t, lot.pid);
     addLog(state, `${p.n} → ${t.name} por R$ ${price}`);
   } else addLog(state, `${p.n} ficou sem lance`);
@@ -740,6 +741,8 @@ export function endAuction(state) {
 }
 export const PREP_MS = 300000, TRADE_LIMIT = 3;
 
+// modo Copa: arrematou uma versão de um jogador, as outras versões dele saem do pote
+function lockVersions(state, p) { if (p && p.id != null) state.pool = state.pool.filter(i => PLAYERS[i].id !== p.id); }
 /* ---------------- Janela de trocas e mercado de sobras ---------------- */
 const lineKind = p => isGK(p) ? 'GK' : 'F';
 // depois da troca cada time precisa continuar com 1 goleiro e 10 de linha
@@ -805,7 +808,7 @@ export function signFree(state, teamId, pid, release, now) {
   if (!t.squad.includes(release)) return 'Escolha quem sai do seu elenco';
   if (lineKind(getP(state, pid)) !== lineKind(getP(state, release))) return 'Troque goleiro por goleiro e jogador de linha por jogador de linha';
   const price = freePrice(state, pid); if (t.budget < price) return 'Saldo insuficiente (R$ ' + price + ')';
-  state.pool.splice(state.pool.indexOf(pid), 1);
+  state.pool.splice(state.pool.indexOf(pid), 1); lockVersions(state, getP(state, pid));
   if (!getP(state, release).base) state.pool.push(release);
   swapOut(state, t, [release], [pid]); delete t.paid[release]; t.paid[pid] = price; t.budget -= price;
   delete state.penal[pid];

@@ -31,6 +31,8 @@ const rooms = new Map();
 const ui = { asel: null, settings: { base: 'europa', order: 'livre', trades: '0', budget: '100', max: '8', format: 'liga', speed: 'normal', hide: '0', pub: '1' }, sel: null, draft: null };
 
 const P = id => E.getP(state, id);
+// nome com o ano da Copa quando a carta é uma versão (modo Copa do Mundo): Pelé '70
+const dn = p => p.y ? p.n + " '" + String(p.y).slice(2) : p.n;
 const myTeam = () => state && state.teams.find(t => t.id === me.id);
 const teamById = id => state.teams.find(t => t.id === id);
 const hostNow = () => Date.now() + offset;
@@ -460,7 +462,7 @@ function pitchHTML(lineup, formation, o) {
     const p = P(id); const lv = E.fitLevel(p, s.pos);
     const sub = o.prices ? (o.prices[id] != null ? fmt(o.prices[id]) : '') : '';
     return `<div class="fslot ${lv} ${o.click ? 'click' : ''} ${o.sel === i ? 'sel' : ''}" data-i="${i}" style="left:${s.x}%;bottom:${s.y}%">
-      <div class="sp">${E.POS_PT[s.pos]}${p.p !== s.pos ? ' · ' + posLabel(p) : ''}${o.ovr ? ' · ' + p.o : ''}</div><div class="sn">${esc(p.n)}</div>${sub ? `<div class="sv">${sub}</div>` : ''}${p.pen ? '<div class="sv pen">fora de ritmo</div>' : ''}</div>`;
+      <div class="sp">${E.POS_PT[s.pos]}${p.p !== s.pos ? ' · ' + posLabel(p) : ''}${o.ovr ? ' · ' + p.o : ''}</div><div class="sn">${esc(dn(p))}</div>${sub ? `<div class="sv">${sub}</div>` : ''}${p.pen ? '<div class="sv pen">fora de ritmo</div>' : ''}</div>`;
   }).join('')}</div>`;
 }
 function previewAssign(team) {
@@ -483,9 +485,9 @@ function cardHTML(p, hide) {
     <div class="pc-head"><div><div class="pc-ovr${hide ? ' q' : ''}">${hide ? '?' : p.o}</div><div class="pc-pos">${posLabel(p)}</div></div><div class="pc-nat">${flagImg(p)}<span>${esc(p.c)}</span></div></div>
     <div class="pc-shirt">${jerseySVG(p.t, p.n)}</div>
     <div class="pc-name">${esc(p.n)}</div>
-    <div class="pc-club">${esc(p.t)}</div>
+    <div class="pc-club">${esc(p.t)}${p.y ? ' · Copa ' + p.y : ''}</div>
     <div class="pc-traits">${p.x ? `<span class="special" title="Especial${p.l ? ' de lenda' : ''}"><i>${p.xi || specialIcon(p.x)}</i> ${esc(p.x)}</span>${p.l ? '<span class="legend" title="Lenda: jogador histórico">👑 Lenda</span>' : ''}` : p.o < 85 ? '' : (p.k && p.k[0] ? `<span>${esc(p.k[0])}</span>` : '')}</div>
-    <div class="pc-foot"><div><span>Posições</span><b>${posLabel(p)}${p.a.length ? ' · ' + alt : ''}</b></div><div><span>${p.w ? 'Altura · peso' : 'Altura'}</span><b>${hw}</b></div></div>
+    <div class="pc-foot"><div><span>Posições</span><b>${posLabel(p)}${p.a.length ? ' · ' + alt : ''}</b></div><div>${p.y ? `<span>Copa</span><b>${p.y} · ${esc(p.c)}</b>` : `<span>${p.w ? 'Altura · peso' : 'Altura'}</span><b>${hw}</b>`}</div></div>
   </div>`;
 }
 let lastCardNo = -1;
@@ -719,7 +721,7 @@ function renderTrades() {
     <button class="${mt.ready ? 'ghost' : 'gold'}" id="tr-ready">${mt.ready ? 'Pronto ✓ (desfazer)' : 'Pronto, ir para a tática'}</button><button class="ghost" id="tr-attr">📋 Atributos do meu time</button>
     ${isHost ? '<button class="ghost" id="tr-go">Encerrar janela agora</button>' : ''}<span class="tr-wait">${state.teams.filter(t => !E.botLike(t) && !t.ready).map(t => esc(t.name)).join(', ') ? 'Esperando: ' + state.teams.filter(t => !E.botLike(t) && !t.ready).map(t => esc(t.name)).join(', ') : ''}</span>` : '');
   setHTML($('#tr-to'), others.map(t => `<option value="${t.id}" ${t.id === ui.tr.to ? 'selected' : ''}>${esc(t.name)}${E.botLike(t) ? ' (bot)' : ''} · ${fmt(t.budget)} · ${E.tradesLeft(state, t)} trocas</option>`).join(''));
-  const row = (id, side) => { const p = P(id), on = ui.tr[side].includes(id); return `<label class="tr-p ${on ? 'on' : ''}" data-tp="${side}:${id}"><span class="po">${p.o}</span><span class="pp">${E.POS_PT[p.p]}</span><span class="pn">${esc(p.n)}${state.penal[id] ? ' <i class="st-off">−5</i>' : ''}</span></label>`; };
+  const row = (id, side) => { const p = P(id), on = ui.tr[side].includes(id); return `<label class="tr-p ${on ? 'on' : ''}" data-tp="${side}:${id}"><span class="po">${p.o}</span><span class="pp">${E.POS_PT[p.p]}</span><span class="pn">${esc(dn(p))}${state.penal[id] ? ' <i class="st-off">−5</i>' : ''}</span></label>`; };
   const byPos = list => list.slice().sort((a, b) => (P(a).p === 'GK' ? -1 : 0) - (P(b).p === 'GK' ? -1 : 0) || P(b).o - P(a).o);
   if (mt) setHTML($('#tr-mine'), byPos(mt.squad).map(id => row(id, 'give')).join(''));
   if (T) setHTML($('#tr-theirs'), byPos(T.squad).map(id => row(id, 'get')).join(''));
@@ -734,8 +736,8 @@ function renderTrades() {
   if (tr.deals.length && tr.deals[0].t === 'ok' && ui.lastDeal !== tr.deals[0].at) { if (ui.lastDeal) play('gavel'); ui.lastDeal = tr.deals[0].at; }
   const free = state.pool.slice().sort((a, b) => P(b).o - P(a).o).slice(0, 30);
   setHTML($('#tr-free'), free.length ? `<div class="free-list">${free.map(id => { const p = P(id), pr = E.freePrice(state, id); const opts = mt ? mt.squad.filter(x => (P(x).p === 'GK') === (p.p === 'GK')).sort((a, b) => P(a).o - P(b).o) : [];
-    return `<div class="free-row"><span class="po">${p.o}</span><span class="pp">${E.POS_PT[p.p]}</span><span class="pn">${esc(p.n)}<small>${esc(p.t)}</small></span><span class="pr">${fmt(pr)}</span>
-    ${mt ? `<select data-rel="${id}">${opts.map(x => `<option value="${x}">sai ${esc(P(x).n)} (${P(x).o})</option>`).join('')}</select><button class="ghost" data-sign="${id}" ${mt.budget < pr ? 'disabled' : ''}>Contratar</button>` : ''}</div>`; }).join('')}</div>` : '<div class="empty">Não sobrou ninguém no pote.</div>');
+    return `<div class="free-row"><span class="po">${p.o}</span><span class="pp">${E.POS_PT[p.p]}</span><span class="pn">${esc(dn(p))}<small>${esc(p.t)}</small></span><span class="pr">${fmt(pr)}</span>
+    ${mt ? `<select data-rel="${id}">${opts.map(x => `<option value="${x}">sai ${esc(dn(P(x)))} (${P(x).o})</option>`).join('')}</select><button class="ghost" data-sign="${id}" ${mt.budget < pr ? 'disabled' : ''}>Contratar</button>` : ''}</div>`; }).join('')}</div>` : '<div class="empty">Não sobrou ninguém no pote.</div>');
 }
 function sumLine() {
   const mt = myTeam(); if (!mt || !$('#tr-sum')) return;
@@ -818,14 +820,14 @@ function teamCard(t, rank) {
   return `<div class="tcard ${t.id === me.id ? 'me' : ''}"><div class="rank">#${rank}</div>
     <div class="tcard-h"><div><div class="nm" style="color:${t.color}">${esc(t.name)}</div><div class="cc">${esc(t.coach)} · ${esc(t.formation)}</div></div>
     <div class="ovr">${E.teamOvr(state, t).toFixed(1)}<small>OVR MÉDIO</small></div></div>
-    ${rows.map(r => `<div class="pl ${r.p.base ? 'base' : ''}"><span class="pp">${E.POS_PT[r.s.pos]}</span><span>${esc(r.p.n)}</span><span class="po">${r.p.o}</span><span class="pr">${r.p.base ? '—' : fmt((t.paid || {})[r.id] ?? 0)}</span></div>`).join('')}
+    ${rows.map(r => `<div class="pl ${r.p.base ? 'base' : ''}"><span class="pp">${E.POS_PT[r.s.pos]}</span><span>${esc(dn(r.p))}</span><span class="po">${r.p.o}</span><span class="pr">${r.p.base ? '—' : fmt((t.paid || {})[r.id] ?? 0)}</span></div>`).join('')}
     <div class="tfoot"><span>Gasto ${fmt(state.settings.budget - t.budget)}</span><span>Sobrou ${fmt(t.budget)}</span></div></div>`;
 }
 
 /* ---------- CAMPEONATO ---------- */
 const KIND = { penalti: 'de pênalti', falta: 'de falta', cabeca: 'de cabeça', jogada: '' };
 const minTxt = m => Math.max(1, Math.min(90, Math.floor(m))) + "'";
-const pn = id => esc(P(id).n);
+const pn = id => esc(dn(P(id)));
 function evText(e, m) {
   const team = teamById(e.s === 'h' ? m.h : m.a), tName = team ? esc(team.name) : '';
   switch (e.t) {
@@ -849,7 +851,7 @@ function squadStatsHTML(t, formation, lineup) {
     if (id == null) return '';
     const p = P(id), pos = slotsF[i] ? slotsF[i].pos : p.p;
     const cells = p.p === 'GK' ? `<td colspan="6" class="gkc">Goleiro: conta o overall</td>` : p.s.map(v => `<td class="${cls(v)}">${v}</td>`).join('');
-    return `<tr><td class="ps">${E.POS_PT[pos] || pos}</td><td class="nm">${esc(p.n)}${p.x ? ` <span title="${esc(p.x)}">${p.xi || '★'}</span>` : ''}</td><td class="ov">${p.o}</td>${cells}</tr>`;
+    return `<tr><td class="ps">${E.POS_PT[pos] || pos}</td><td class="nm">${esc(dn(p))}${p.x ? ` <span title="${esc(p.x)}">${p.xi || '★'}</span>` : ''}</td><td class="ov">${p.o}</td>${cells}</tr>`;
   }).join('');
   return `<div class="sq-force"><span>⚔️ Ataque <b>${R(st.a)}</b></span><span>⚙️ Meio <b>${R(st.m)}</b></span><span>🛡️ Defesa <b>${R(st.d)}</b></span></div>
     <div class="sq-wrap"><table class="sq-stats"><thead><tr><th>Pos</th><th class="nm">Jogador</th><th>OVR</th><th>RIT</th><th>FIN</th><th>PAS</th><th>DRI</th><th>DEF</th><th>FIS</th></tr></thead><tbody>${rows}</tbody></table></div>`;

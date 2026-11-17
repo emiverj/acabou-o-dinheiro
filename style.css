@@ -711,3 +711,19 @@ table.sq-stats{width:100%;border-collapse:collapse;font-size:13px;min-width:520p
 
 .legend i.lg-ok{background:var(--ok)} .legend i.lg-near{background:var(--warn)} .legend i.lg-bad{background:var(--bad)}
 body.light{--ok:#1f9d5a;--warn:#d99a00;--bad:#d8392b}
+
+/* tema Copa do Mundo: verde-esmeralda escuro com dourado metálico */
+body[data-mode=copa]:not(.light){
+  --bg:#03170f; --bg2:#072619; --card:#0a2e1f; --card2:#0f3a27; --line:rgba(240,222,170,.13); --line2:rgba(240,222,170,.26);
+  --chalk:#f6efd9; --muted:#a9b89c; --gold:#e6b84a;
+  background-color:#03170f;
+  background-image:radial-gradient(ellipse 80% 55% at 50% -10%,rgba(230,184,74,.22),transparent 70%),radial-gradient(ellipse 50% 35% at 10% 0%,rgba(28,107,69,.35),transparent 70%),
+    repeating-linear-gradient(90deg,rgba(255,240,200,.016) 0 90px,transparent 90px 180px)}
+body[data-mode=copa]:not(.light) .lot{background:linear-gradient(165deg,#13492f,#06231a 70%);border-color:rgba(230,184,74,.45)}
+body[data-mode=copa]:not(.light) :is(.board,.score,.sb-score,.code-big){background:#021009}
+body[data-mode=copa]:not(.light) .price{color:#ffd77a;text-shadow:0 0 22px rgba(230,184,74,.45)}
+body[data-mode=copa]:not(.light) :is(.seg button.on,.cta,.gold,.bid.max,.tag.host,.stabs button.on,.sp-tag){background:linear-gradient(180deg,#ffe7a1,#d9a63a);color:#2a1c02;border-color:#e6b84a}
+body[data-mode=copa]:not(.light) .panel h2,body[data-mode=copa]:not(.light) .ah h2{color:#f3dc9b}
+body[data-mode=copa]:not(.light) .logo .q,body[data-mode=copa]:not(.light) .hero h1 em{color:#e6b84a}
+body.light[data-mode=copa]{--gold:#a8780f}
+body[data-mode=copa]:not(.light) .seg.tiles button.on{background:color-mix(in srgb,var(--gold) 16%,var(--bg2));color:var(--chalk);border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset}
