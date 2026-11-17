@@ -72,6 +72,8 @@ const escx = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', 
 const SHIRT = 'M62,22 L82,12 Q100,24 118,12 L138,22 L186,52 L168,86 L148,76 L148,186 Q100,194 52,186 L52,76 L32,86 L14,52 Z';
 
 // Camisa vista de costas com o nome do jogador
+const SLEEVE_L = 'M62,22 L14,52 L32,86 L52,76 Z', SLEEVE_R = 'M138,22 L186,52 L168,86 L148,76 Z';
+function lum(hex) { const n = parseInt(hex.slice(1), 16); const r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255; return (0.299 * r + 0.587 * g + 0.114 * b) / 255; }
 export function jerseySVG(club, name) {
   const k = KITS[club] || DEFAULT, id = 'cj' + (++uid);
   let pat = '';
@@ -80,18 +82,24 @@ export function jerseySVG(club, name) {
   if (k.pat === 'halves') pat = `<rect x="100" y="0" width="100" height="200" fill="${k.s}"/>`;
   if (k.pat === 'sash') pat = `<polygon points="40,40 70,40 170,190 140,190" fill="${k.s}"/>`;
   if (k.pat === 'band') pat = `<rect x="88" y="0" width="24" height="200" fill="${k.s}"/>`;
-  if (k.pat === 'sleeves') pat = `<polygon points="138,22 186,52 168,86 148,76" fill="${k.s}"/><polygon points="62,22 14,52 32,86 52,76" fill="${k.s}"/>`;
-  const last = String(name).split(' ').slice(-1)[0].toUpperCase();
+  if (k.pat === 'sleeves') pat = `<path d="${SLEEVE_L}" fill="${k.s}"/><path d="${SLEEVE_R}" fill="${k.s}"/>`;
+  const parts = String(name).split(' ');
+  const last = parts.slice(-1)[0].toUpperCase();
   const label = last.length > 3 ? last : String(name).toUpperCase();
-  const fs = Math.max(11, Math.min(22, Math.floor(150 / Math.max(4, label.length) * 1.25)));
-  const textBg = k.pat === 'stripes' || k.pat === 'hoops' || k.pat === 'halves' || k.pat === 'sash' || k.pat === 'band';
+  const fs = Math.max(12, Math.min(26, Math.floor(118 / Math.max(4, label.length) * 1.55)));
+  // cor do nome: a cor de detalhe do clube, com contorno contrastante para ler bem sobre listras
+  const fill = k.t, edge = lum(fill) > 0.6 ? 'rgba(10,14,12,.85)' : 'rgba(255,255,255,.9)';
+  const busy = ['stripes', 'hoops', 'halves', 'sash', 'band'].includes(k.pat);
   return `<svg class="jersey" viewBox="0 0 200 200" aria-hidden="true">
     <defs><clipPath id="${id}"><path d="${SHIRT}"/></clipPath>
-    <linearGradient id="${id}g" x1="0" x2="1"><stop offset="0" stop-color="#000" stop-opacity=".18"/><stop offset=".5" stop-color="#fff" stop-opacity=".08"/><stop offset="1" stop-color="#000" stop-opacity=".22"/></linearGradient></defs>
-    <g clip-path="url(#${id})"><rect width="200" height="200" fill="${k.p}"/>${pat}<rect width="200" height="200" fill="url(#${id}g)"/></g>
-    <path d="${SHIRT}" fill="none" stroke="rgba(0,0,0,.45)" stroke-width="3"/>
-    <path d="M82,12 Q100,24 118,12 Q100,30 82,12 Z" fill="${k.s}" stroke="rgba(0,0,0,.35)" stroke-width="2"/>
-    ${textBg ? `<rect x="50" y="${60 - fs}" width="100" height="${fs + 13}" rx="5" fill="rgba(10,14,12,.78)"/>` : ''}
-    <text x="100" y="66" text-anchor="middle" font-family="Anton, Impact, sans-serif" font-size="${fs}" letter-spacing="1" fill="${textBg ? '#ffffff' : k.t}" stroke="${textBg ? 'none' : 'rgba(0,0,0,.25)'}" stroke-width="1">${escx(label)}</text>
+    <linearGradient id="${id}g" x1="0" x2="1"><stop offset="0" stop-color="#000" stop-opacity=".22"/><stop offset=".45" stop-color="#fff" stop-opacity=".10"/><stop offset="1" stop-color="#000" stop-opacity=".26"/></linearGradient>
+    <linearGradient id="${id}v" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".06"/><stop offset="1" stop-color="#000" stop-opacity=".18"/></linearGradient></defs>
+    <g clip-path="url(#${id})"><rect width="200" height="200" fill="${k.p}"/>${pat}
+      <path d="M14,52 L32,86 L36,84 L18,50 Z M186,52 L168,86 L164,84 L182,50 Z" fill="${k.s}" opacity=".9"/>
+      <rect width="200" height="200" fill="url(#${id}g)"/><rect width="200" height="200" fill="url(#${id}v)"/></g>
+    <path d="${SHIRT}" fill="none" stroke="rgba(0,0,0,.5)" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M82,12 Q100,26 118,12 L114,10 Q100,20 86,10 Z" fill="${k.s}" stroke="rgba(0,0,0,.35)" stroke-width="1.5"/>
+    <text x="100" y="${54 + fs * 0.6}" text-anchor="middle" font-family="'Saira Condensed', 'Archivo Narrow', sans-serif" font-weight="800" font-size="${fs}" letter-spacing="${fs > 18 ? 2 : 1}"
+      fill="${fill}" stroke="${edge}" stroke-width="${busy ? 4 : 1.6}" stroke-linejoin="round" paint-order="stroke">${escx(label)}</text>
   </svg>`;
 }

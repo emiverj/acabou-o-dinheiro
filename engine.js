@@ -125,6 +125,9 @@ export const rnd = (a, b) => a + Math.random() * (b - a);
 export const pick = a => a[Math.floor(Math.random() * a.length)];
 export const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 export const slots = t => 11 - t.squad.length;
+// bots e técnicos humanos que caíram há mais de 1 minuto (piloto automático)
+export const botLike = t => !!(t.bot || t.auto);
+export function setAuto(t, on) { t.auto = !!on; if (on && !t.pers) t.pers = { n: 'Piloto automático', k: 1 }; }
 export const hasGK = (state, t) => t.squad.some(id => isGK(getP(state, id)));
 export const fieldCount = (state, t) => t.squad.filter(id => !isGK(getP(state, id))).length;
 export function needFor(state, t, p) { return isGK(p) ? !hasGK(state, t) : fieldCount(state, t) < 10; }
@@ -310,8 +313,23 @@ export function mkTeam(id, coach, name, bot, idx) {
 }
 function botPersona() { return pick([{ n:'Gastador', k:1.3 }, { n:'Pão-duro', k:0.78 }, { n:'Equilibrado', k:1 }, { n:'Caçador de craques', k:0, star:true }, { n:'Apostador', k:0, wild:true }]); }
 
+// Pote da partida: ~25% a mais de jogadores de linha do que as vagas e goleiros de sobra,
+// sorteados mantendo a proporção de craques (89+), bons (85–88) e o resto (81–84)
+export function buildPool(nTeams) {
+  const ids = PLAYERS.map((_, i) => i);
+  const gks = ids.filter(i => isGK(PLAYERS[i])), fields = ids.filter(i => !isGK(PLAYERS[i]));
+  const strat = (list, k) => {
+    if (k >= list.length) return list.slice();
+    const tiers = [list.filter(i => PLAYERS[i].o >= 89), list.filter(i => PLAYERS[i].o >= 85 && PLAYERS[i].o < 89), list.filter(i => PLAYERS[i].o < 85)];
+    const out = []; tiers.forEach(t => { shuffle(t); out.push(...t.slice(0, Math.round(k * t.length / list.length))); });
+    const rest = shuffle(list.filter(i => !out.includes(i))); while (out.length < k && rest.length) out.push(rest.pop());
+    return out.slice(0, k);
+  };
+  return strat(gks, Math.ceil(nTeams * 1.5) + 1).concat(strat(fields, Math.ceil(nTeams * 10 * 1.25)));
+}
 export function startAuction(state) {
-  const pool = PLAYERS.map((_, i) => i);
+  const pool = buildPool(state.teams.length);
+  state.poolSize = pool.length; state.poolIds = pool.slice();
   state.pool = pool; state.phase = 'auction'; state.lotNo = 0; state.log = []; state.history = []; state.penal = {}; state.base = {};
   state.teams.forEach(t => { t.budget = state.settings.budget; t.squad = []; t.lineup = Array(11).fill(null); t.ready = false; t.paid = {}; });
   if (state.teams.some(t => t.bot)) state.teams.forEach(t => { if (t.bot) t.formation = pick(FORMATION_NAMES); });
@@ -351,10 +369,10 @@ export function chooseLot(state, now) {
   const pid = pick(cands); state.pool.splice(state.pool.indexOf(pid), 1); state.lotNo++;
   const sp = SPEEDS[state.settings.speed];
   state.lot = { no: state.lotNo, pid, price: 0, leader: null, endsAt: now + sp.open * 1000, status: 'open', passed: [] };
-  state._ai = {}; state.teams.forEach(t => { if (t.bot) state._ai[t.id] = { max: botMax(state, t, PLAYERS[pid]), next: now + rnd(900, 2600) }; });
-  const humansIn = state.teams.filter(t => !t.bot && needFor(state, t, PLAYERS[pid]) && maxAllowed(t) >= 1);
+  state._ai = {}; state.teams.forEach(t => { if (botLike(t)) state._ai[t.id] = { max: botMax(state, t, PLAYERS[pid]), next: now + rnd(900, 2600) }; });
+  const humansIn = state.teams.filter(t => !botLike(t) && needFor(state, t, PLAYERS[pid]) && maxAllowed(t) >= 1);
   state.lot.auto = humansIn.length === 0;
-  if (state.lot.auto) state.lot.endsAt = now + (state.teams.some(t => !t.bot && slots(t) > 0) ? 1400 : 700);
+  if (state.lot.auto) state.lot.endsAt = now + (state.teams.some(t => !botLike(t) && slots(t) > 0) ? 1400 : 700);
   return true;
 }
 export function placeBid(state, teamId, amount, now) {
@@ -369,15 +387,21 @@ export function placeBid(state, teamId, amount, now) {
   lot.price = amount; lot.leader = teamId; lot.passed = lot.passed.filter(id => id !== teamId);
   const sp = SPEEDS[state.settings.speed];
   lot.endsAt = Math.max(lot.endsAt, now + sp.reset * 1000);
-  if (state._ai) for (const id in state._ai) if (id !== teamId && state._ai[id].next !== Infinity) state._ai[id].next = Math.max(state._ai[id].next, now + rnd(...sp.ai));
+  if (state._ai) for (const id in state._ai) if (id !== teamId && state._ai[id] && state._ai[id].next !== Infinity) state._ai[id].next = Math.max(state._ai[id].next, now + rnd(...sp.ai));
   return null;
+}
+function aiFor(state, t) {
+  state._ai = state._ai || {};
+  if (!state._ai[t.id] || state._ai[t.id].max == null) state._ai[t.id] = { max: botMax(state, t, PLAYERS[state.lot.pid]), next: Date.now() + rnd(600, 1500) };
+  return state._ai[t.id];
 }
 function sealed(state) {
   const lot = state.lot, p = PLAYERS[lot.pid]; const bids = [];
   state.teams.forEach(t => {
-    if (!t.bot) { if (lot.leader === t.id) bids.push({ id: t.id, max: lot.price }); return; }
+    if (!botLike(t)) { if (lot.leader === t.id) bids.push({ id: t.id, max: lot.price }); return; }
     if (!needFor(state, t, p)) return;
-    const m = Math.min(state._ai[t.id].max, maxAllowed(t));
+    const ai = aiFor(state, t);
+    const m = Math.min(ai.max, maxAllowed(t));
     const floor = lot.leader === t.id ? lot.price : lot.price + 1;
     if (lot.leader === t.id) bids.push({ id: t.id, max: Math.max(m, lot.price) }); else if (m >= floor) bids.push({ id: t.id, max: m });
   });
@@ -408,7 +432,7 @@ export function tickAuction(state, now) {
   if (state.phase !== 'auction') return false;
   const lot = state.lot, sp = SPEEDS[state.settings.speed];
   if (!lot || lot.status !== 'open') {
-    const fast = state.teams.every(t => t.bot || slots(t) === 0);
+    const fast = state.teams.every(t => botLike(t) || slots(t) === 0);
     if (!lot || now - lot.closedAt > (lot && lot.auto ? (fast ? 500 : 1100) : sp.after)) {
       if (!chooseLot(state, now)) { endAuction(state); }
       return true;
@@ -416,7 +440,7 @@ export function tickAuction(state, now) {
     return false;
   }
   // todos os humanos que podem disputar passaram → resolve na hora
-  const humansIn = state.teams.filter(t => !t.bot && needFor(state, t, PLAYERS[lot.pid]) && maxAllowed(t) >= 1);
+  const humansIn = state.teams.filter(t => !botLike(t) && needFor(state, t, PLAYERS[lot.pid]) && maxAllowed(t) >= 1);
   const allPassed = humansIn.length > 0 && humansIn.every(t => lot.passed.includes(t.id)) && !humansIn.some(t => t.id === lot.leader);
   if (lot.auto || allPassed) {
     if (lot.auto && now < lot.endsAt) return false;
@@ -424,8 +448,8 @@ export function tickAuction(state, now) {
   }
   let changed = false;
   for (const t of state.teams) {
-    if (!t.bot || lot.leader === t.id) continue;
-    const a = state._ai[t.id]; if (now < a.next) continue;
+    if (!botLike(t) || lot.leader === t.id) continue;
+    const a = aiFor(state, t); if (now < a.next) continue;
     const min = minBid(state, t), cap = Math.min(a.max, maxAllowed(t));
     if (cap >= min && needFor(state, t, PLAYERS[lot.pid])) {
       let inc = 1; const gap = cap - min;
@@ -471,7 +495,7 @@ export function endAuction(state) {
       addLog(state, `${getP(state, id).n} completou o ${t.name} (vaga em branco)`);
     }
     if (t.bot) { const b = bestFormation(state, t.squad); t.formation = b.name; t.lineup = b.lineup; t.ready = true; }
-    else { if (t.lineup.some(x => x == null)) t.lineup = autoLineup(state, t.squad, t.formation); t.ready = false; }
+    else { if (t.lineup.some(x => x == null)) t.lineup = autoLineup(state, t.squad, t.formation); t.ready = !!t.auto; }
   });
   state.lot = null; state.phase = 'lineup'; state.lineupEndsAt = Date.now() + 150000;
 }
