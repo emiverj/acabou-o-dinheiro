@@ -561,11 +561,11 @@ function botMax(state, t, p) {
   const s = slots(t), per = t.budget / s;
   const r = Math.max(0, (p.o - state.lo) / Math.max(1, state.hi - state.lo));
   const avg = state.settings.budget / 11;
-  let v = 1 + Math.pow(r, 2) * avg * 4.2;
-  v *= Math.min(1.9, Math.max(.35, per / avg));
+  let v = 1 + Math.pow(r, 2.4) * avg * 3.0;
+  v *= Math.min(1.35, Math.max(.35, per / avg));
   // dinheiro sobrando no fim do leilão: bot fica mais agressivo para não terminar com caixa parado
-  if (per > avg) v += (per - avg) * (0.35 + r) * (s <= 4 ? 1.4 : 0.8);
-  let k = t.pers.k; if (t.pers.star) k = r >= .6 ? 1.5 : .8; if (t.pers.wild) k = rnd(.65, 1.55);
+  if (per > avg) v += (per - avg) * (0.2 + r * 0.6) * (s <= 3 ? 1.1 : 0.5);
+  let k = Math.min(1.15, t.pers.k || 1); if (t.pers.star) k = r >= .6 ? 1.25 : .75; if (t.pers.wild) k = rnd(.7, 1.2);
   v *= k * rnd(.82, 1.2);
   // encaixe na formação do bot
   const slotsF = FORMATIONS[t.formation].map(s => s.pos);
@@ -573,7 +573,7 @@ function botMax(state, t, p) {
   const sameLine = slotsF.filter(sp => LINE[sp] === LINE[p.p]).length;
   const have = t.squad.map(id => getP(state, id)).filter(q => LINE[q.p] === LINE[p.p]).length;
   if (!isGK(p)) { v *= bestFit >= .97 ? 1.05 : .85; if (have >= sameLine) v *= .55; }
-  v = Math.max(v, floorFor(state, p) * (r >= .5 ? 1.15 : 1));
+  v = Math.max(v, floorFor(state, p));
   return Math.max(1, Math.min(Math.round(v), maxAllowed(t)));
 }
 export function chooseLot(state, now) {
@@ -684,11 +684,12 @@ export function tickAuction(state, now) {
     const a = aiFor(state, t); if (now < a.next) continue;
     const min = minBid(state, t), cap = Math.min(a.max, maxAllowed(t));
     if (cap >= min && needFor(state, t, PLAYERS[lot.pid])) {
+      // bots dão lances pequenos e nem sempre respondem na hora
+      if (Math.random() < 0.35) { a.next = now + rnd(...sp.ai) * 1.6; continue; }
       let inc = 1; const gap = cap - min;
-      if (gap > 10 && Math.random() < .45) inc = pick([2,3,5]);
-      if (gap > 22 && Math.random() < .25) inc = pick([5,10]);
+      if (gap > 12 && Math.random() < .25) inc = pick([2, 3]);
       placeBid(state, t.id, Math.min(cap, min + inc - 1), now);
-      a.next = now + rnd(...sp.ai) * 1.4; changed = true; break;
+      a.next = now + rnd(...sp.ai) * 2.2; changed = true; break;
     } else a.next = Infinity;
   }
   if (now >= lot.endsAt) { closeLot(state, lot.leader, lot.price, now); return true; }
