@@ -533,7 +533,7 @@ function renderAuction() {
       <div class="panel" style="padding:14px">
         <div class="pitch-h" style="margin-bottom:10px"><h3 id="my-title">Seu time</h3><div style="width:200px" id="a-fsel"></div></div>
         <div id="mypitch"></div>
-        <div class="legend"><span><i style="background:var(--green)"></i>na posição</span><span><i style="background:var(--gold)"></i>adaptado</span><span><i style="background:var(--red)"></i>fora de posição</span></div>
+        <div class="legend"><span><i class="lg-ok"></i>na posição</span><span><i class="lg-near"></i>adaptado</span><span><i class="lg-bad"></i>fora de posição</span></div>
         <div class="hint">Toque em dois lugares do campinho para trocar jogadores de posição.</div>
       </div>
       <div class="side">
@@ -659,7 +659,7 @@ function frame() {
       else if (lot.auto) { bar.style.width = '100%'; bar.style.background = 'var(--muted)'; c.textContent = 'Lote só entre os bots…'; c.classList.remove('hot'); }
       else {
         bar.style.width = Math.min(100, left / sp.open * 100) + '%';
-        bar.style.background = left <= 1.5 ? 'var(--red)' : left <= 3 ? 'var(--gold)' : 'var(--green)';
+        bar.style.background = left <= 1.5 ? 'var(--bad)' : left <= 3 ? 'var(--warn)' : 'var(--ok)';
         if (!lot.leader) { const fl = E.floorFor(state, PLAYERS[lot.pid]); c.textContent = left <= 3 ? 'Ninguém? Última chance…' : 'Lance inicial: R$ ' + fl; c.classList.toggle('hot', left <= 3); }
         else if (left <= 1) { c.textContent = 'Dou-lhe três…'; c.classList.add('hot'); }
         else if (left <= 2) { c.textContent = 'Dou-lhe duas…'; c.classList.add('hot'); }
@@ -764,7 +764,7 @@ function renderLineup() {
     <div class="ah"><h2>Escale seu time</h2><div class="prog">A bola rola em <span class="countdown" id="lu-cd"></span></div></div>
     <div class="lgrid">
       <div class="panel" style="padding:14px"><div id="lu-pitch"></div>
-        <div class="legend"><span><i style="background:var(--green)"></i>na posição</span><span><i style="background:var(--gold)"></i>adaptado</span><span><i style="background:var(--red)"></i>fora de posição (rende bem menos)</span></div>
+        <div class="legend"><span><i class="lg-ok"></i>na posição</span><span><i class="lg-near"></i>adaptado</span><span><i class="lg-bad"></i>fora de posição (rende bem menos)</span></div>
         <div class="hint">Toque em dois jogadores para trocá-los de lugar.</div></div>
       <div class="side">
         <div class="panel" id="lu-ctrl"></div>
