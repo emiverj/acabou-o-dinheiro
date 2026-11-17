@@ -6,6 +6,7 @@ import { play, isMuted, setMuted, playAcabou } from './sound.js';
 import { resultImage } from './share.js';
 import { rulesHTML } from './rules.js';
 import { jerseySVG } from './kits.js';
+import { specialIcon } from './traits.js';
 import { createViewer } from './match.js';
 
 const $ = s => document.querySelector(s);
@@ -27,7 +28,7 @@ const saveMe = () => { try { localStorage.setItem('acabou-me', JSON.stringify({ 
 let ch = null, state = null, isHost = false, offset = 0, lastSeen = 0, code = null;
 let loopIv = null, hbIv = null, joinIv = null, lobbyCh = null, view = null, lastStampKey = '';
 const rooms = new Map();
-const ui = { asel: null, settings: { base: 'europa', budget: '100', max: '8', format: 'liga', speed: 'normal', hide: '0', pub: '1' }, sel: null, draft: null };
+const ui = { asel: null, settings: { base: 'europa', order: 'livre', budget: '100', max: '8', format: 'liga', speed: 'normal', hide: '0', pub: '1' }, sel: null, draft: null };
 
 const P = id => E.getP(state, id);
 const myTeam = () => state && state.teams.find(t => t.id === me.id);
@@ -161,6 +162,7 @@ function handleAction(a) {
       publish(); break;
     }
     case 'leave': if (t && state.phase === 'lobby' && a.id !== state.hostId) { state.teams = state.teams.filter(x => x !== t); publish(); } break;
+    case 'tactic': if (t && E.TACTICS[a.tactic] && !(state.cup && state.cup.live)) { t.tactic = a.tactic; publish(); } break;
     case 'formation': if (t && E.FORMATIONS[a.formation] && (state.phase === 'lobby' || state.phase === 'auction')) { t.formation = a.formation; if (state.phase === 'auction') t.lineup = E.arrange(state, t, a.formation); publish(); } break;
     case 'arrange': if (t && state.phase === 'auction') { E.setArrangement(state, a.id, a.formation, a.lineup); publish(); } break;
     case 'bid': if (t && state.phase === 'auction' && state.lot && state.lot.no === a.lotNo) { const err = E.placeBid(state, a.id, +a.amount, now); if (!err) publish(); } break;
@@ -219,7 +221,7 @@ async function createRoom() {
   if (!readNames()) return;
   code = genCode();
   const s = ui.settings;
-  const settings = { budget: +s.budget, max: +s.max, format: s.format, speed: s.speed, hideOvr: s.hide === '1', pub: s.pub === '1', base: s.base };
+  const settings = { budget: +s.budget, max: +s.max, format: s.format, speed: s.speed, hideOvr: s.hide === '1', pub: s.pub === '1', base: s.base, order: s.order };
   setBase(settings.base);
   state = E.newRoomState(code, me, settings); isHost = true;
   try { ch = await openChannel('room-' + code, onMsg); } catch (e) { toast(e.message); state = null; isHost = false; return; }
@@ -290,6 +292,8 @@ const ICON = {
   rapido: SVG('<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>'),
   pub: SVG('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/>'),
   priv: SVG('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'),
+  shuffle: SVG('<path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>'),
+  sector: SVG('<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="1.6" fill="currentColor"/><circle cx="13" cy="12" r="1.6" fill="currentColor"/><circle cx="18" cy="18" r="1.6" fill="currentColor"/>'),
   book: SVG('<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M8 7h7M8 11h5"/>'),
 };
 const miniCard = t => `<span class="mini-card">${t}</span>`;
@@ -320,6 +324,7 @@ function renderHome() {
         <div class="field"><label>Máx. de técnicos</label><select id="f-max">${[2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${+ui.settings.max === n ? 'selected' : ''}>${n} técnicos</option>`).join('')}</select></div>
       </div>
       <div class="field"><label>Campeonato</label>${seg('format', [['liga','Pontos corridos',ICON.liga],['mata','Mata-mata',ICON.mata],['grupos','Grupos + mata',ICON.grupos]], 'tiles')}</div>
+      <div class="field"><label>Ordem do leilão</label>${seg('order', [['livre','Sorteada',ICON.shuffle,'Qualquer posição a qualquer hora'],['setor','Por setor',ICON.sector,'Goleiros → defesa → meio → ataque']], 'tiles row')}</div>
       <div class="grid2">
         <div class="field"><label>Velocidade do leilão</label>${seg('speed', [['normal','Normal',ICON.normal],['rapido','Rápido',ICON.rapido]], 'tiles')}</div>
         <div class="field"><label>Overall no leilão</label>${seg('hide', [['0','Visível',miniCard('88')],['1','Escondido',miniCard('?')]], 'tiles')}</div>
@@ -394,7 +399,7 @@ function renderLobby() {
       </div>
     </div>
     <div id="lobby-record"></div>
-    <div class="panel" style="margin-top:18px"><h2>Livro de regras</h2><div class="lead">Leia antes de começar: vale para todos nesta sala.</div><div id="rulebook"></div></div>
+    <button class="rules-link" id="rulebook">${ICON.book}<span><b>Livro de regras</b><small>Leia antes de começar: vale para todos nesta sala</small></span><em>Abrir</em></button>
     ${sponsorHTML()}`;
     $('#leave').onclick = leaveRoom;
     fillMail();
@@ -402,10 +407,10 @@ function renderLobby() {
     $('#copy').onclick = async () => { const link = location.origin + location.pathname + '?sala=' + code; try { await navigator.clipboard.writeText(`Bora pro leilão no "Acabou o dinheiro?" 💸 Código: ${code} — ${link}`); toast('Convite copiado!'); } catch (e) { toast('Código: ' + code); } };
   }
   const s = state.settings;
-  $('#rulebook').innerHTML = rulesHTML(s);
+  $('#rulebook').onclick = showRules;
   $('#lobby-record').innerHTML = recordHTML();
   const nT = state.teams.length, poolEst = Math.ceil(nT * 1.5) + 1 + Math.ceil(nT * 12.5);
-  $('#rules').innerHTML = `<b>Pote desta partida:</b> ${poolEst} jogadores sorteados para ${nT * 11} vagas.<br><b>Regras da sala:</b> base ${BASE_NAMES[s.base] || 'Europa'} · orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · leilão ${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
+  $('#rules').innerHTML = `<b>Pote desta partida:</b> ${poolEst} jogadores sorteados para ${nT * 11} vagas.<br><b>Regras da sala:</b> base ${BASE_NAMES[s.base] || 'Europa'} · orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · leilão ${s.order === 'setor' ? 'por setor, ' : ''}${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
   $('#plist').innerHTML = state.teams.map(t => `<div class="prow2">
       <span class="dot" style="background:${t.color};width:14px;height:14px"></span>
       <div><div class="nm">${esc(t.name)}${t.id === me.id ? ' (você)' : ''}</div><small>${esc(t.coach)} · ${esc(t.formation)}${t.bot ? ' · ' + esc(t.pers.n) : ''}${statusTag(t)}</small></div>
@@ -466,7 +471,7 @@ function cardHTML(p, hide) {
     <div class="pc-shirt">${jerseySVG(p.t, p.n)}</div>
     <div class="pc-name">${esc(p.n)}</div>
     <div class="pc-club">${esc(p.t)}</div>
-    <div class="pc-traits">${p.x ? `<span class="special" title="${p.l ? 'Lenda: especial dado a um jogador histórico' : 'Especial dos 88+'}">${p.l ? '👑' : '★'} ${esc(p.x)}</span>` : p.o < 85 ? '' : (p.k && p.k[0] ? `<span>${esc(p.k[0])}</span>` : '')}</div>
+    <div class="pc-traits">${p.x ? `<span class="special" title="Especial${p.l ? ' de lenda' : ''}"><i>${p.xi || specialIcon(p.x)}</i> ${esc(p.x)}</span>${p.l ? '<span class="legend" title="Lenda: jogador histórico">👑 Lenda</span>' : ''}` : p.o < 85 ? '' : (p.k && p.k[0] ? `<span>${esc(p.k[0])}</span>` : '')}</div>
     <div class="pc-foot"><div><span>Posições</span><b>${posLabel(p)}${p.a.length ? ' · ' + alt : ''}</b></div><div><span>${p.w ? 'Altura · peso' : 'Altura'}</span><b>${hw}</b></div></div>
   </div>`;
 }
@@ -477,6 +482,7 @@ function renderAuction() {
     view = 'auction'; lastStampKey = ''; lastCardNo = -1; ui.asel = null;
     app.innerHTML = `
     <div class="ah"><h2>Leilão ao vivo</h2><div class="prog" id="a-prog"></div></div>
+    <div class="sectors" id="a-sectors"></div>
     <div class="agrid">
       <div class="lot" id="lot">
         <div class="lot-top"><span class="lotno" id="l-no"></span><span class="lotno" id="l-floor"></span></div>
@@ -533,6 +539,8 @@ function renderAuction() {
     fillMail();
   }
   const lot = state.lot, mt = myTeam(), sold = state.teams.reduce((a, t) => a + t.squad.length, 0);
+  const secEl = $('#a-sectors');
+  if (secEl) { const cur = state.sector; secEl.style.display = cur == null ? 'none' : ''; if (cur != null) secEl.innerHTML = E.SECTORS.map(([n, ic], i) => `<span class="${i === cur ? 'on' : i < cur ? 'done' : ''}">${ic} ${n}</span>`).join('<i>›</i>') + (cur >= 4 ? '<span class="on">🔀 Vagas restantes</span>' : ''); }
   $('#a-prog').textContent = `Lote ${state.lotNo} · ${sold}/${state.teams.length * 11} vagas preenchidas · ${Math.max(0, (state.poolSize || 0) - (state.history || []).length - (lot && lot.status === 'open' ? 1 : 0))} de ${state.poolSize || '?'} jogadores ainda no pote`;
   if (lot) {
     const p = PLAYERS[lot.pid];
@@ -669,21 +677,25 @@ function renderLineup() {
         <div class="panel" id="lu-ctrl"></div>
         <div class="box"><h3>Técnicos</h3><div class="plist" id="lu-teams"></div><div class="ctrl" id="lu-host"></div></div>
       </div>
-    </div>`;
+    </div>
+    ${mt ? `<div class="panel" style="margin-top:18px"><h2>Atributos do seu elenco</h2><div class="lead">Leilão encerrado: agora você vê os seis atributos das suas cartas. RIT = ritmo, FIN = finalização, PAS = passe, DRI = drible, DEF = defesa, FIS = físico.</div><div id="lu-stats"></div></div>` : ''}`;
     if (mt) {
       $('#lu-ctrl').innerHTML = `<h2>Formação</h2><div class="lead">Troque à vontade: os jogadores são reposicionados automaticamente.</div>
         <div class="field">${formationSelect('lu-form', ui.draft.formation)}</div>
         <div class="ctrl"><button class="ghost" id="lu-auto">Reorganizar automático</button><button class="ghost" id="lu-best">Sugerir formação</button></div>
+        <div class="field"><label>Estilo de jogo</label>${tacticPicker(mt.tactic)}</div>
         <div class="ctrl"><button class="gold" id="lu-ready">Estou pronto</button><button class="ghost" id="lu-squads">Ver elencos</button></div>`;
       $('#lu-form').onchange = e => { ui.draft.formation = e.target.value; ui.draft.lineup = E.autoLineup(state, mt.squad, ui.draft.formation); ui.sel = null; sendDraft(); };
       $('#lu-auto').onclick = () => { ui.draft.lineup = E.autoLineup(state, mt.squad, ui.draft.formation); ui.sel = null; sendDraft(); };
       $('#lu-best').onclick = () => { const b = E.bestFormation(state, mt.squad); ui.draft = { formation: b.name, lineup: b.lineup }; $('#lu-form').value = b.name; ui.sel = null; sendDraft(); toast('Sugestão: ' + b.name); };
+      bindTactics($('#lu-ctrl'));
       $('#lu-ready').onclick = () => { const m = myTeam(); act({ type: 'ready', ready: !(m && m.ready) }); };
       $('#lu-squads').onclick = showSquads;
     } else $('#lu-ctrl').innerHTML = `<h2>Assistindo</h2><div class="lead">Os técnicos estão escalando os times.</div><button class="ghost" id="lu-squads">Ver elencos</button>`, $('#lu-squads').onclick = showSquads;
   }
   if (mt) {
     setHTML($('#lu-pitch'), pitchHTML(ui.draft.lineup, ui.draft.formation, { click: true, sel: ui.sel, ovr: true, prices: mt.paid }));
+    if ($('#lu-stats')) setHTML($('#lu-stats'), squadStatsHTML(mt, ui.draft.formation, ui.draft.lineup));
     $('#lu-pitch').onclick = e => {
       const el = e.target.closest('.fslot[data-i]'); if (!el) return;
       const i = +el.dataset.i;
@@ -734,6 +746,58 @@ function evText(e, m) {
   return '';
 }
 const scoreAt = (m, min) => [m.ev.filter(e => e.t === 'gol' && e.s === 'h' && e.m <= min).length, m.ev.filter(e => e.t === 'gol' && e.s === 'a' && e.m <= min).length];
+/* estilo de jogo, comparação de setores e estatísticas da partida */
+// atributos das cartas do meu elenco (liberados depois do leilão) + força por setor
+function squadStatsHTML(t, formation, lineup) {
+  const slotsF = E.FORMATIONS[formation], ids = lineup && lineup.length === 11 ? lineup : t.squad;
+  const st = E.strength(state, { formation, lineup: ids }); const R = Math.round;
+  const cls = v => v >= 85 ? 'hi' : v >= 75 ? '' : v < 60 ? 'lo' : 'mid';
+  const rows = ids.map((id, i) => {
+    if (id == null) return '';
+    const p = P(id), pos = slotsF[i] ? slotsF[i].pos : p.p;
+    const cells = p.p === 'GK' ? `<td colspan="6" class="gkc">Goleiro: conta o overall</td>` : p.s.map(v => `<td class="${cls(v)}">${v}</td>`).join('');
+    return `<tr><td class="ps">${E.POS_PT[pos] || pos}</td><td class="nm">${esc(p.n)}${p.x ? ` <span title="${esc(p.x)}">${p.xi || '★'}</span>` : ''}</td><td class="ov">${p.o}</td>${cells}</tr>`;
+  }).join('');
+  return `<div class="sq-force"><span>⚔️ Ataque <b>${R(st.a)}</b></span><span>⚙️ Meio <b>${R(st.m)}</b></span><span>🛡️ Defesa <b>${R(st.d)}</b></span></div>
+    <div class="sq-wrap"><table class="sq-stats"><thead><tr><th>Pos</th><th class="nm">Jogador</th><th>OVR</th><th>RIT</th><th>FIN</th><th>PAS</th><th>DRI</th><th>DEF</th><th>FIS</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function showMySquad() {
+  const mt = myTeam(); if (!mt) return;
+  $('#modal').innerHTML = `<div class="modal" id="mbg"><div class="inner" style="max-width:760px"><div class="top"><h2>Atributos do ${esc(mt.name)}</h2><button class="ghost" id="mclose">Fechar</button></div>
+    <div class="lead">RIT = ritmo, FIN = finalização, PAS = passe, DRI = drible, DEF = defesa, FIS = físico. Use para escolher o estilo de jogo.</div>${squadStatsHTML(mt, mt.formation, mt.lineup)}</div></div>`;
+  $('#mclose').onclick = () => $('#modal').innerHTML = '';
+  $('#mbg').onclick = e => { if (e.target.id === 'mbg') $('#modal').innerHTML = ''; };
+}
+function tacticPicker(cur) {
+  return `<div class="tactics">${E.TACTIC_NAMES.map(k => { const T = E.TACTICS[k]; return `<button data-tac="${k}" class="${(cur || 'equilibrado') === k ? 'on' : ''}" title="${esc(T.d)}"><span class="ti">${T.i}</span><b>${T.n}</b><small>${esc(T.d)}</small></button>`; }).join('')}</div>`;
+}
+function bindTactics(root) { root.querySelectorAll('[data-tac]').forEach(b => b.onclick = () => { act({ type: 'tactic', tactic: b.dataset.tac }); root.querySelectorAll('[data-tac]').forEach(x => x.classList.toggle('on', x === b)); toast('Estilo: ' + E.TACTICS[b.dataset.tac].n); }); }
+const tacTag = k => { const T = E.TACTICS[k || 'equilibrado']; return `<span class="tac-tag" title="${esc(T.d)}">${T.i} ${T.n}</span>`; };
+function cmpHTML(c) {
+  const row = (l, x, y, r) => { const d = x - y; return `<div class="cmp-row"><span class="cl">${l}</span><b class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${x}</b><span class="vs">×</span><b class="${d < 0 ? 'up' : d > 0 ? 'down' : ''}">${y}</b><span class="cr">${r}</span></div>`; };
+  return `<div class="cmp">${row('Ataque', c.h.a, c.a.d, 'Defesa')}${row('Meio', c.h.m, c.a.m, 'Meio')}${row('Defesa', c.h.d, c.a.a, 'Ataque')}</div>`;
+}
+function previewCmp(m) { const H = teamById(m.h), A = teamById(m.a); if (!H || !A || !H.lineup || !A.lineup) return ''; const mu = E.matchup(state, H, A); const R = v => Math.round(v); return cmpHTML({ h: { a: R(mu.h.a), m: R(mu.h.m), d: R(mu.h.d) }, a: { a: R(mu.a.a), m: R(mu.a.m), d: R(mu.a.d) } }); }
+const STAT_ROWS = [['pos', 'Posse de bola', v => v + '%'], ['shots', 'Finalizações'], ['onT', 'Chutes no gol'], ['passes', 'Passes trocados'], ['acc', 'Acerto de passe', v => v + '%'], ['saves', 'Defesas do goleiro'], ['corners', 'Escanteios'], ['off', 'Impedimentos'], ['fouls', 'Faltas'], ['ya', 'Cartões amarelos'], ['rc', 'Cartões vermelhos']];
+function statBars(m, min) {
+  if (!m.st) return '';
+  const f = min == null ? 1 : Math.min(1, Math.max(0, min / 90));
+  // ao vivo: o que tem lance (chutes no gol, defesas, cartões) é contado até o minuto; o resto cresce com o relógio
+  const evs = (side, ts, by) => m.ev.filter(e => e.m <= min && ts.includes(e.t) && (by ? e.s !== side : e.s === side)).length;
+  const cut = (k, side) => {
+    const v = m.st[side][k]; if (min == null || k === 'pos' || k === 'acc') return v;
+    if (k === 'onT') return evs(side, ['gol', 'defesa', 'penperdido']);
+    if (k === 'saves') return evs(side, ['defesa', 'penperdido'], true);
+    if (k === 'ya') return evs(side, ['amarelo']); if (k === 'rc') return evs(side, ['vermelho']);
+    if (k === 'shots') return Math.max(evs(side, ['gol', 'defesa', 'penperdido', 'chance']), Math.round(v * f));
+    return Math.round(v * f);
+  };
+  return `<div class="mstats">${STAT_ROWS.map(([k, l, fm]) => {
+    const x = cut(k, 'h'), y = cut(k, 'a'); if (k === 'rc' && !x && !y) return '';
+    const tot = x + y || 1, F = fm || (v => v);
+    return `<div class="ms-row"><div class="ms-top"><b>${F(x)}</b><span>${l}</span><b>${F(y)}</b></div><div class="ms-bar"><i style="width:${x / tot * 100}%;background:${teamById(m.h).color}"></i><i style="width:${y / tot * 100}%;background:${teamById(m.a).color}"></i></div></div>`;
+  }).join('')}</div>`;
+}
 function matchCard(m) {
   const H = teamById(m.h), A = teamById(m.a);
   if (!H || !A) return '';
@@ -742,7 +806,10 @@ function matchCard(m) {
   return `<div class="match ${mine ? 'me' : ''}">${m.g ? `<div class="mtag">${esc(m.g)}</div>` : ''}<div class="mrow"><div class="h ${m.played && m.w === m.h ? 'win' : ''}">${tn(m.h)}</div>
     <div class="score ${m.played ? '' : 'pending'}">${m.played ? m.hg + ' × ' + m.ag : 'vs'}</div><div class="a ${m.played && m.w === m.a ? 'win' : ''}">${tn(m.a)}</div></div>
     ${m.played ? `<div class="scorers"><div>${goals('h')}</div><div>${goals('a')}</div></div>` : ''}${m.pens ? `<div class="pens">Pênaltis: ${m.pens[0]} × ${m.pens[1]}</div>` : ''}
-    ${m.played && m.mvp != null ? `<div class="mvp">⭐ Craque do jogo: <b>${pn(m.mvp)}</b> · nota ${m.r[m.mvp].toFixed(1)}</div>` : ''}</div>`;
+    ${m.played && m.mvp != null ? `<div class="mvp">⭐ Craque do jogo: <b>${pn(m.mvp)}</b> · nota ${m.r[m.mvp].toFixed(1)}</div>` : ''}
+    ${m.played && m.why ? `<div class="why">💬 ${esc(m.why)}</div>` : ''}
+    ${m.played && m.st ? `<details class="mdet"><summary>📊 Estatísticas e duelo de setores</summary><div class="tacs">${tacTag(m.cmp && m.cmp.h.t)}<span>estilos</span>${tacTag(m.cmp && m.cmp.a.t)}</div>${m.cmp ? cmpHTML(m.cmp) : ''}${statBars(m)}</details>` : ''}
+    ${!m.played ? `<div class="tacs">${tacTag(H.tactic)}<span>estilos</span>${tacTag(A.tactic)}</div>${previewCmp(m)}` : ''}</div>`;
 }
 // tabela com o placar parcial da rodada ao vivo
 function liveRows(baseRows, matches, min) {
@@ -799,12 +866,13 @@ function renderCup(force) {
     <div>
       ${up.length ? `<div class="panel" style="padding:16px;margin-bottom:14px">${isHost ? speedCtrl(ui.liveSpeed || E.LIVE_DEFAULT) : ''}<div class="lbl" style="margin:0 0 8px">Próximos jogos · ${esc(E.nextTitle(state))}</div><div class="matches">${up.map(matchCard).join('')}</div>
         <div class="ctrl">${isHost ? `<button class="gold" id="c-watch">▶ Assistir a rodada</button><button class="ghost" id="c-all">Simular o resto do campeonato</button>` : '<span class="lead" style="margin:0">O anfitrião vai começar a rodada.</span>'}</div></div>` : ''}
+      ${myTeam() && up.length ? `<div class="panel tac-panel"><div class="lbl" style="margin:0 0 8px">Seu estilo de jogo para esta rodada</div>${tacticPicker(myTeam().tactic)}</div>` : ''}
       ${cup.last ? `<div class="lbl" style="margin:0 0 8px">Resultados · ${esc(cup.last.title)}</div><div class="matches">${cup.last.matches.map(matchCard).join('')}</div>` : ''}
-      <div class="ctrl"><button class="ghost" id="c-sq">Ver elencos</button></div>
+      <div class="ctrl">${myTeam() ? '<button class="ghost" id="c-mine">📋 Atributos do meu time</button>' : ''}<button class="ghost" id="c-sq">Ver elencos</button></div>
     </div>
     <div class="side"><div class="box">${standingsHTML(90)}</div><div class="box" id="c-stats">${statsHTML(undefined, 3)}</div></div>
   </div>`;
-  $('#c-sq').onclick = showSquads;
+  $('#c-sq').onclick = showSquads; bindTactics(app); if ($('#c-mine')) $('#c-mine').onclick = showMySquad;
   if (isHost && up.length) {
     app.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => { ui.liveSpeed = +b.dataset.sp; app.querySelectorAll('[data-sp]').forEach(x => x.classList.toggle('on', x === b)); });
     $('#c-watch').onclick = () => { E.startRound(state, Date.now(), ui.liveSpeed || E.LIVE_DEFAULT); publish(); };
@@ -835,6 +903,7 @@ function renderLive(force) {
           ${reactBar()}
           ${isHost ? `<div class="ctrl"><button class="ghost" id="lv-skip">Pular para o fim da rodada</button></div>` : ''}
         </div>
+        <div class="box"><h3>Estatísticas do jogo</h3><div class="why" id="lv-why" style="display:none"></div><div id="lv-mstats"></div></div>
         <div class="box"><h3>Lance a lance</h3><ul class="feed" id="lv-feed"></ul></div>
       </div>
       <div class="side"><div class="box" id="lv-table"></div><div class="box" id="lv-stats"></div><div class="box"><h3>Gols da rodada</h3><ul class="feed small" id="lv-goals"></ul></div></div>
@@ -885,6 +954,8 @@ function liveTick(force) {
     if (prev >= 0 && e.t === 'penperdido') toast(`🧤 ${P(e.gk).n} pega pênalti!`);
     if (prev >= 0 && m === wm) { if (e.t === 'gol') play('goal'); else if (e.t === 'penperdido' || e.t === 'defesa') play('ooh'); }
   }));
+  $('#lv-mstats').innerHTML = statBars(wm, min);
+  const why = $('#lv-why'); if (why) { const fin = min >= 90; why.style.display = fin && wm.why ? '' : 'none'; if (fin && wm.why) why.textContent = '💬 ' + wm.why; }
   $('#lv-feed').innerHTML = wm.ev.filter(e => e.m <= min).reverse().map(e => `<li class="ev-${e.t}">${evText(e, wm)}</li>`).join('') || '<li class="empty">Bola rolando…</li>';
   $('#lv-goals').innerHTML = ms.flatMap(m => m.ev.filter(e => (e.t === 'gol' || e.t === 'vermelho') && e.m <= min).map(e => ({ e, m }))).sort((x, y) => y.e.m - x.e.m).map(({ e, m }) => `<li>${evText(e, m)}</li>`).join('') || '<li class="empty">Nenhum gol ainda</li>';
   $('#lv-table').innerHTML = standingsHTML(min);
@@ -1011,7 +1082,7 @@ function fillMail() {
   document.querySelectorAll('a.mail').forEach(a => { a.href = 'mailto:' + addr + '?subject=Acabou%20o%20dinheiro%3F'; a.textContent = addr; });
 }
 function showRules() {
-  $('#modal').innerHTML = `<div class="modal" id="mbg"><div class="inner" style="max-width:820px"><div class="top"><h2>Livro de regras</h2><button class="ghost" id="mclose">Fechar</button></div>${rulesHTML(state ? state.settings : { base: ui.settings.base, budget: +ui.settings.budget, speed: ui.settings.speed, format: ui.settings.format })}</div></div>`;
+  $('#modal').innerHTML = `<div class="modal" id="mbg"><div class="inner" style="max-width:820px"><div class="top"><h2>Livro de regras</h2><button class="ghost" id="mclose">Fechar</button></div>${rulesHTML(state ? state.settings : { base: ui.settings.base, order: ui.settings.order, budget: +ui.settings.budget, speed: ui.settings.speed, format: ui.settings.format })}</div></div>`;
   $('#mclose').onclick = () => $('#modal').innerHTML = '';
   $('#mbg').onclick = e => { if (e.target.id === 'mbg') $('#modal').innerHTML = ''; };
 }

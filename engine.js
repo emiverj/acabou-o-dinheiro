@@ -162,14 +162,50 @@ function pickAssist(state, team, scorer) {
   return wpick(onField(state, team).filter(x => x.id !== scorer).map(x => ({ id: x.id, w: (ASSIST_ROLE[x.pos] || 0.5) * Math.pow(x.p.s[2] / 80, 3) * (hasK(x.p, 'Garçom') ? 1.4 : 1) })));
 }
 function takers(state, team) {
-  return onField(state, team).filter(x => x.pos !== 'GK').map(x => ({ id: x.id, v: x.p.s[1] + (hasK(x.p, 'Cobrador') ? 8 : 0) + (x.p.x === 'Batedor oficial' ? 15 : 0) })).sort((a, b) => b.v - a.v);
+  return onField(state, team).filter(x => x.pos !== 'GK').map(x => ({ id: x.id, v: x.p.s[1] + (hasK(x.p, 'Cobrador') ? 8 : 0) + (x.p.pk ? 15 : 0) })).sort((a, b) => b.v - a.v);
 }
 const CARD_ROLE = { CB:1.2, CDM:1.5, LB:1, RB:1, LWB:1, RWB:1, CM:0.9, CAM:0.5, LM:0.6, RM:0.6, LW:0.4, RW:0.4, ST:0.5, CF:0.5, GK:0.1 };
 function pickCard(state, team) { return wpick(onField(state, team).map(x => ({ id: x.id, w: (CARD_ROLE[x.pos] || 0.5) * (x.p.s[5] / 80) * (hasK(x.p, 'Xerife') || hasK(x.p, 'Pivô') ? 1.5 : 1) }))); }
 const gkId = team => team.lineup[FORMATIONS[team.formation].findIndex(s => s.pos === 'GK')];
 
+/* Estilos de jogo (táticas): mexem nos setores, na posse e no ritmo da partida */
+export const TACTICS = {
+  equilibrado: { n: 'Equilibrado', i: '⚖️', d: 'Sem mudanças: o time joga como foi montado.', a: 0, m: 0, df: 0, pos: 0, sh: 0, fo: 0, off: 0 },
+  ofensivo: { n: 'Ofensivo', i: '🔥', d: 'Ataque +3, defesa −3. Mais chutes, mais impedimentos.', a: 3, m: 0, df: -3, pos: 3, sh: 3, fo: 0, off: 0.8 },
+  retranca: { n: 'Retranca', i: '🧱', d: 'Defesa +3, ataque −3. Menos posse e menos chances para os dois lados.', a: -3, m: -1, df: 3, pos: -7, sh: -3, fo: 2, off: -0.4 },
+  posse: { n: 'Toque de bola', i: '🔁', d: 'Meio +2 e muito mais posse. Sofre contra o contra-ataque.', a: 0, m: 2, df: 0, pos: 9, sh: -1, fo: -2, off: -0.2 },
+  contra: { n: 'Contra-ataque', i: '⚡', d: 'Abre mão da bola. Ataque +3 contra quem é ofensivo ou de toque de bola.', a: 0, m: -1, df: 1, pos: -8, sh: 0, fo: 0, off: 0.6 },
+  pressao: { n: 'Pressão alta', i: '🏃', d: 'Meio +2 e ataque +1, defesa −1. Mais faltas e cartões; anula o toque de bola.', a: 1, m: 2, df: -1, pos: 3, sh: 1, fo: 4, off: 0.2 },
+};
+export const TACTIC_NAMES = Object.keys(TACTICS);
+const tac = t => TACTICS[t.tactic] || TACTICS.equilibrado;
+// bots (e quem está no piloto automático) escolhem o estilo olhando o adversário
+function botTactics(state, h, a) {
+  for (const [t, o] of [[h, a], [a, h]]) {
+    if (!botLike(t)) continue;
+    const s = strength(state, t), x = strength(state, o), gap = (s.a + s.m + s.d) - (x.a + x.m + x.d);
+    if (Math.random() < 0.25) t.tactic = pick(TACTIC_NAMES);
+    else if (gap > 6) t.tactic = s.m >= x.m ? pick(['posse', 'ofensivo']) : 'ofensivo';
+    else if (gap < -6) t.tactic = (o.tactic === 'ofensivo' || o.tactic === 'posse') ? 'contra' : pick(['retranca', 'contra']);
+    else t.tactic = pick(['equilibrado', 'pressao', 'equilibrado']);
+  }
+}
+// força de cada setor já com o estilo de jogo e o duelo de estilos aplicados
+export function matchup(state, h, a) {
+  const sh = { ...strength(state, h) }, sa = { ...strength(state, a) };
+  const apply = (s, t, o) => {
+    const T = tac(t), O = tac(o);
+    s.a += T.a; s.m += T.m; s.d += T.df;
+    if (t.tactic === 'contra' && (o.tactic === 'ofensivo' || o.tactic === 'posse')) s.a += 3;
+    if (t.tactic === 'pressao' && o.tactic === 'posse') s.m += 2;
+    if (O && o.tactic === 'retranca' && t.tactic === 'posse') s.a -= 1;
+  };
+  apply(sh, h, a); apply(sa, a, h);
+  return { h: sh, a: sa };
+}
+const r1 = v => Math.round(v);
 export function playMatch(state, h, a, knockout, neutral) {
-  const sh = strength(state, h), sa = strength(state, a);
+  const mu = matchup(state, h, a), sh = mu.h, sa = mu.a;
   const pow = s => 0.65 * s.a + 0.35 * s.m, wall = s => 0.7 * s.d + 0.3 * s.m;
   const lh = Math.min(4.2, Math.max(.2, (neutral ? 1.28 : 1.38) * Math.exp(0.1 * (pow(sh) - wall(sa)))));
   const la = Math.min(4.2, Math.max(.2, (neutral ? 1.28 : 1.16) * Math.exp(0.1 * (pow(sa) - wall(sh)))));
@@ -182,15 +218,16 @@ export function playMatch(state, h, a, knockout, neutral) {
       const r = Math.random(); let kind = 'jogada';
       if (r < 0.09) kind = 'penalti'; else if (r < 0.15) kind = 'falta'; else if (r < 0.31) kind = 'cabeca';
       let p, as = null;
-      if (kind === 'penalti' || kind === 'falta') { const tk = takers(state, team); p = (kind === 'falta' ? tk.find(x => hasK(getP(state, x.id), 'Cobrador')) || tk[0] : tk[0]).id; }
+      if (kind === 'penalti' || kind === 'falta') { const tk = takers(state, team); p = (kind === 'falta' ? tk.find(x => getP(state, x.id).pk) || tk.find(x => hasK(getP(state, x.id), 'Cobrador')) || tk[0] : tk[0]).id; }
       else p = pickScorer(state, team, kind === 'cabeca');
       if ((kind === 'jogada' || kind === 'cabeca') && Math.random() < 0.78) as = pickAssist(state, team, p);
       ev.push({ m: minute(), t: 'gol', s: side, kind, p, as });
     }
     const pm = poisson(0.06); for (let i = 0; i < pm; i++) ev.push({ m: minute(), t: 'penperdido', s: side, p: takers(state, team)[0].id, gk: gkId(opp) });
-    const sv = poisson(L[side] * 1.7); for (let i = 0; i < sv; i++) ev.push({ m: minute(), t: 'defesa', s: side, p: pickScorer(state, team, false), gk: gkId(opp) });
-    const ch = poisson(L[side] * 1.8 + 1); for (let i = 0; i < ch; i++) ev.push({ m: minute(), t: 'chance', s: side, p: pickScorer(state, team, Math.random() < .25) });
-    const y = poisson(1.5); const booked = new Set();
+    const TS = tac(team), TO = tac(opp), shotK = Math.max(0.5, 1 + (TS.sh - (TO.tactic === 'retranca' ? 1 : 0)) * 0.08);
+    const sv = poisson(L[side] * 1.7 * shotK); for (let i = 0; i < sv; i++) ev.push({ m: minute(), t: 'defesa', s: side, p: pickScorer(state, team, false), gk: gkId(opp) });
+    const ch = poisson((L[side] * 1.8 + 1) * shotK); for (let i = 0; i < ch; i++) ev.push({ m: minute(), t: 'chance', s: side, p: pickScorer(state, team, Math.random() < .25) });
+    const y = poisson(1.5 + TS.fo * 0.15); const booked = new Set();
     for (let i = 0; i < y; i++) { const p = pickCard(state, team); if (booked.has(p)) continue; booked.add(p); ev.push({ m: minute(), t: 'amarelo', s: side, p }); }
     if (Math.random() < 0.035) ev.push({ m: minute(), t: 'vermelho', s: side, p: pickCard(state, team) });
   }
@@ -230,7 +267,59 @@ export function playMatch(state, h, a, knockout, neutral) {
     });
   }
   m.mvp = +Object.entries(m.r).sort((x, y) => y[1] - x[1])[0][0];
+  m.st = matchStats(state, h, a, sh, sa, ev);
+  m.cmp = { h: { a: r1(sh.a), m: r1(sh.m), d: r1(sh.d), t: h.tactic || 'equilibrado' }, a: { a: r1(sa.a), m: r1(sa.m), d: r1(sa.d), t: a.tactic || 'equilibrado' } };
+  m.why = whyText(state, m, h, a, sh, sa);
   return m;
+}
+
+// estatísticas da partida, coerentes com os lances sorteados
+function matchStats(state, h, a, sh, sa, ev) {
+  const T = { h, a }, S = { h: sh, a: sa }, out = {};
+  let pos = 50 + (sh.m - sa.m) * 1.7 + (tac(h).pos - tac(a).pos) * 0.9 + rnd(-3, 3);
+  pos = Math.round(Math.min(72, Math.max(28, pos)));
+  for (const side of ['h', 'a']) {
+    const o = side === 'h' ? 'a' : 'h', team = T[side], st = S[side], my = side === 'h' ? pos : 100 - pos, TS = tac(team);
+    const n = t => ev.filter(e => e.s === side && e.t === t).length;
+    const gol = n('gol'), sav = n('defesa'), pp = n('penperdido'), miss = n('chance');
+    const onT = gol + sav + pp;
+    const shots = onT + miss + poisson(1.5 + Math.max(0, TS.sh) * 0.4);
+    const passes = Math.round(my * (9.2 + TS.pos * 0.12) + rnd(-25, 25));
+    const acc = Math.round(Math.min(93, Math.max(68, 76 + (st.m - 80) * 0.5 + TS.pos * 0.5 + rnd(-2, 2))));
+    out[side] = {
+      pos: my, shots, onT, passes, acc,
+      saves: ev.filter(e => e.s === o && (e.t === 'defesa' || e.t === 'penperdido')).length,
+      off: poisson(Math.max(0.3, 1.5 + TS.off)), corners: poisson(Math.max(1, 3 + (st.a - S[o].d) * 0.15 + TS.sh * 0.3)),
+      fouls: poisson(11 + TS.fo), ya: n('amarelo'), rc: n('vermelho'),
+    };
+  }
+  return out;
+}
+// uma frase que explica o resultado
+function whyText(state, m, h, a, sh, sa) {
+  const T = { h, a }, S = { h: sh, a: sa }, st = m.st;
+  const nm = side => T[side].name, o = side => side === 'h' ? 'a' : 'h';
+  const winS = m.hg > m.ag ? 'h' : m.ag > m.hg ? 'a' : null;
+  const opts = [];
+  if (winS) {
+    const l = o(winS), W = S[winS], Lo = S[l];
+    const atkGap = W.a - Lo.d, midGap = W.m - Lo.m, defGap = W.d - Lo.a;
+    if (st[l].shots >= st[winS].shots + 4) opts.push([5, `${nm(l)} chutou mais (${st[l].shots} × ${st[winS].shots}), mas parou no goleiro: ${st[winS].saves} defesas.`]);
+    if (midGap >= 3) opts.push([midGap, `O meio-campo do ${nm(winS)} ganhou a briga (${r1(W.m)} × ${r1(Lo.m)}) e ficou com ${st[winS].pos}% de posse.`]);
+    if (atkGap >= 3) opts.push([atkGap, `O ataque do ${nm(winS)} foi demais para a defesa do ${nm(l)} (${r1(W.a)} × ${r1(Lo.d)}).`]);
+    if (defGap >= 4) opts.push([defGap - 1, `A defesa do ${nm(winS)} segurou o ataque do ${nm(l)} (${r1(W.d)} × ${r1(Lo.a)}).`]);
+    const sp = m.ev.filter(e => e.t === 'gol' && e.s === winS && (e.kind === 'penalti' || e.kind === 'falta' || e.kind === 'cabeca')).length;
+    if (sp && sp >= Math.abs(m.hg - m.ag)) opts.push([3.5, `A bola parada decidiu: ${sp} ${sp > 1 ? 'gols' : 'gol'} do ${nm(winS)} em falta, pênalti ou cabeçada.`]);
+    if (m.ev.some(e => e.t === 'vermelho' && e.s === l)) opts.push([4, `O cartão vermelho complicou a vida do ${nm(l)}.`]);
+    if (T[winS].tactic === 'contra' && st[winS].pos < 45) opts.push([4.5, `O contra-ataque funcionou: o ${nm(winS)} venceu com só ${st[winS].pos}% de posse.`]);
+    if (W.a + W.m + W.d < Lo.a + Lo.m + Lo.d - 4) opts.push([4.2, `Zebra! No papel o ${nm(l)} era mais forte, mas o ${nm(winS)} foi mais eficiente.`]);
+    if (!opts.length) opts.push([1, `Jogo parelho, decidido nos detalhes a favor do ${nm(winS)}.`]);
+  } else {
+    if (T.h.tactic === 'retranca' || T.a.tactic === 'retranca') { const s = T.h.tactic === 'retranca' ? 'h' : 'a'; opts.push([3, `A retranca do ${nm(s)} funcionou e segurou o empate.`]); }
+    if (Math.abs(st.h.shots - st.a.shots) >= 5) { const s = st.h.shots > st.a.shots ? 'h' : 'a'; opts.push([2, `O ${nm(s)} chutou mais (${st[s].shots} × ${st[o(s)].shots}), mas não conseguiu a vitória.`]); }
+    opts.push([1, m.hg === 0 ? 'Defesas por cima: ninguém conseguiu furar o bloqueio.' : 'Times equilibrados, empate justo.']);
+  }
+  return opts.sort((x, y) => y[0] - x[0])[0][1];
 }
 
 /* ---------------- Campeonato ---------------- */
@@ -312,6 +401,7 @@ export function startRound(state, now, speed) {
   ms.forEach(m => {
     if (m.played) return;
     if (!m.h || !m.a) { m.played = true; m.bye = true; m.w = m.h || m.a; return; }
+    botTactics(state, T(state, m.h), T(state, m.a));
     Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), cup.phase === 'ko', cup.phase === 'ko'));
   });
   cup.live = { at: now, base: 0, speed: speed || cup.speed || LIVE_DEFAULT, title: nextTitle(state), endAt: 0 };
@@ -333,7 +423,7 @@ export function tickLive(state, now) {
 export function commitRound(state) {
   const cup = state.cup; if (!cup || cup.done) return;
   const ms = currentRound(state);
-  if (ms.some(m => !m.played)) { cup.live = cup.live || { at: Date.now(), base: 90, speed: 6 }; ms.forEach(m => { if (!m.played) { if (!m.h || !m.a) { m.played = true; m.bye = true; m.w = m.h || m.a; } else Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), cup.phase === 'ko', cup.phase === 'ko')); } }); }
+  if (ms.some(m => !m.played)) { cup.live = cup.live || { at: Date.now(), base: 90, speed: 6 }; ms.forEach(m => { if (!m.played) { if (!m.h || !m.a) { m.played = true; m.bye = true; m.w = m.h || m.a; } else { botTactics(state, T(state, m.h), T(state, m.a)); Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), cup.phase === 'ko', cup.phase === 'ko')); } } }); }
   cup.last = { title: nextTitle(state), matches: ms.filter(m => !m.bye) };
   cup.live = null;
   if (cup.phase === 'liga') {
@@ -423,13 +513,15 @@ export function newRoomState(code, host, settings) {
     lot: null, lotNo: 0, pool: null, log: [], history: [], penal: {}, base: {}, cup: null, lineupEndsAt: 0 };
 }
 export function mkTeam(id, coach, name, bot, idx) {
-  return { id, coach, name: name || ('FC ' + coach), bot, color: COLORS[idx % COLORS.length], budget: 100, squad: [], formation: '4-3-3', lineup: null, ready: false, paid: {}, pers: bot ? botPersona() : null };
+  return { id, coach, name: name || ('FC ' + coach), bot, color: COLORS[idx % COLORS.length], budget: 100, squad: [], formation: '4-3-3', tactic: 'equilibrado', lineup: null, ready: false, paid: {}, pers: bot ? botPersona() : null };
 }
 function botPersona() { return pick([{ n:'Gastador', k:1.3 }, { n:'Pão-duro', k:0.78 }, { n:'Equilibrado', k:1 }, { n:'Caçador de craques', k:0, star:true }, { n:'Apostador', k:0, wild:true }]); }
 
 // Pote da partida: ~25% a mais de jogadores de linha do que as vagas e goleiros de sobra,
 // sorteados mantendo a proporção de craques (89+), bons (85–88) e o resto (81–84)
-export function buildPool(nTeams) {
+export const SECTORS = [['Goleiros','🧤'], ['Defensores','🛡️'], ['Meio-campistas','⚙️'], ['Atacantes','⚽']];
+export const lineOf = p => LINE[p.p] ?? 2;
+export function buildPool(nTeams, bySector) {
   const ids = PLAYERS.map((_, i) => i);
   const gks = ids.filter(i => isGK(PLAYERS[i])), fields = ids.filter(i => !isGK(PLAYERS[i]));
   const strat = (list, k) => {
@@ -439,10 +531,23 @@ export function buildPool(nTeams) {
     const rest = shuffle(list.filter(i => !out.includes(i))); while (out.length < k && rest.length) out.push(rest.pop());
     return out.slice(0, k);
   };
+  if (bySector) { // leilão por setor: sobra garantida em cada linha
+    const q = { 1: 4.1, 2: 3.7, 3: 2.7 };
+    return strat(gks, Math.ceil(nTeams * 1.5) + 1).concat(...[1, 2, 3].map(l => strat(fields.filter(i => lineOf(PLAYERS[i]) === l), Math.ceil(nTeams * q[l] * 1.3))));
+  }
   return strat(gks, Math.ceil(nTeams * 1.5) + 1).concat(strat(fields, Math.ceil(nTeams * 10 * 1.25)));
 }
+// quantos jogadores daquela linha o time ainda quer, pela formação
+function lineNeed(state, t, line) {
+  if (slots(t) === 0) return 0;
+  if (line === 0) return hasGK(state, t) ? 0 : 1;
+  const want = FORMATIONS[t.formation].filter(s => LINE[s.pos] === line).length;
+  const have = t.squad.map(id => getP(state, id)).filter(q => !isGK(q) && lineOf(q) === line).length;
+  return Math.max(0, want - have);
+}
 export function startAuction(state) {
-  const pool = buildPool(state.teams.length);
+  const pool = buildPool(state.teams.length, state.settings.order === 'setor');
+  state.sector = state.settings.order === 'setor' ? 0 : null;
   state.poolSize = pool.length; state.poolIds = pool.slice();
   state.pool = pool; state.phase = 'auction'; state.lotNo = 0; state.log = []; state.history = []; state.penal = {}; state.base = {};
   state.teams.forEach(t => { t.budget = state.settings.budget; t.squad = []; t.lineup = Array(11).fill(null); t.ready = false; t.paid = {}; });
@@ -479,6 +584,16 @@ export function chooseLot(state, now) {
   let wantGK = needGK > 0 && (needField === 0 || Math.random() < needGK / (needGK + needField) * 1.15);
   let cands = wantGK ? gks : fields; if (!cands.length) cands = wantGK ? fields : gks;
   cands = cands.filter(id => state.teams.some(t => slots(t) > 0 && needFor(state, t, PLAYERS[id])));
+  // leilão por setor: goleiros → defensores → meias → atacantes; depois, o que faltar sai livre
+  if (state.sector != null) {
+    while (state.sector < 4) {
+      const L = state.sector;
+      const sc = state.pool.filter(id => lineOf(PLAYERS[id]) === L && state.teams.some(t => needFor(state, t, PLAYERS[id]) && lineNeed(state, t, L) > 0));
+      if (sc.length) { cands = sc; break; }
+      state.sector++;
+      if (state.sector < 4) addLog(state, `Agora é a vez dos ${SECTORS[state.sector][0].toLowerCase()}`);
+    }
+  }
   if (!cands.length) return false;
   const pid = pick(cands); state.pool.splice(state.pool.indexOf(pid), 1); state.lotNo++;
   const sp = SPEEDS[state.settings.speed];
@@ -560,6 +675,9 @@ export function tickAuction(state, now) {
     if (lot.auto && now < lot.endsAt) return false;
     const r = sealed(state); closeLot(state, r.id, r.price, now); return true;
   }
+  // ninguém (além de quem está na frente) tem dinheiro para cobrir → fecha na hora: vende ao líder ou descarta
+  const canCover = state.teams.some(t => t.id !== lot.leader && needFor(state, t, PLAYERS[lot.pid]) && maxAllowed(t) >= minBid(state, t));
+  if (!canCover) { closeLot(state, lot.leader, lot.price, now); lot.quick = true; return true; }
   let changed = false;
   for (const t of state.teams) {
     if (!botLike(t) || lot.leader === t.id) continue;
