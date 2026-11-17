@@ -738,3 +738,10 @@ body[data-mode=copa]:not(.light) .seg.tiles button.on{background:color-mix(in sr
 .offer .ghost.small{margin-left:6px}
 .free-row{grid-template-columns:30px 34px 1fr 54px minmax(0,200px) auto}
 @media (max-width:640px){ .tr-tabs{max-width:none} }
+/* apoio via Pix: QR sempre preto no branco, em qualquer tema */
+.support{display:flex;gap:18px;align-items:center;background:var(--bg2);border:1px solid var(--line2);border-radius:16px;padding:16px;margin:16px 0}
+.support-qr{width:150px;height:150px;flex:none;background:#fff;border-radius:10px;padding:6px;image-rendering:pixelated}
+.support h3{margin:0 0 6px}
+.support p{margin:0 0 10px;color:var(--chalk2,inherit);font-size:14px;line-height:1.4}
+.support .hint{margin-top:6px}
+@media (max-width:640px){ .support{flex-direction:column;text-align:center} }

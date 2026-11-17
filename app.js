@@ -1120,6 +1120,7 @@ function renderEnd() {
     <div class="ctrl"><button class="gold" id="e-img">📸 Imagem para story</button><button class="ghost" id="e-copy">Copiar resultado</button><button class="ghost" id="e-sq">Ver elencos</button>
       ${isHost ? '<button class="ghost" id="e-again">Nova partida (mesma sala)</button>' : ''}<button class="ghost" id="e-leave">Sair</button></div>
   </div>
+  ${supportHTML()}
   ${recordHTML()}`;
   let txt = `💸 ACABOU O DINHEIRO? · Sala ${code}\n🏆 Campeão: ${champ.name} (${champ.coach})\n`;
   if (mt) {
@@ -1173,6 +1174,23 @@ document.addEventListener('click', e => {
 
 /* ---------- patrocínio e contato ---------- */
 const MAIL = ['mvferreirasilva', 'gmail.com'];
+// apoio ao jogo via Pix (chave aleatória do Marcos; o QR em img/pix.svg é gerado a partir deste código)
+const PIX = '00020126580014br.gov.bcb.pix01367022bedf-c91c-4652-944a-d33f12486b7d5204000053039865802BR5924MARCOS VINICIUS FERREIRA6014RIO DE JANEIRO62070503***6304D96C';
+function supportHTML() {
+  return `<div class="support"><img src="img/pix.svg" alt="QR Code do Pix para apoiar o jogo" class="support-qr">
+    <div><h3>Curtiu? Apoie o jogo 💚</h3><p>O <b>Acabou o dinheiro?</b> é feito por uma pessoa só, sem anúncios. Se quiser ajudar a manter o site no ar e ganhar modos novos, mande um Pix de qualquer valor.</p>
+    <button class="gold" data-pix>Copiar Pix copia e cola</button><div class="hint">Recebedor: Marcos Vinicius Ferreira · Mercado Pago</div></div></div>`;
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('[data-pix]')) return;
+  const ok = () => toast('Pix copiado! Cole no app do seu banco'); 
+  if (navigator.clipboard) navigator.clipboard.writeText(PIX).then(ok, () => prompt('Copie o código Pix:', PIX)); else prompt('Copie o código Pix:', PIX);
+});
+function showSupport() {
+  $('#modal').innerHTML = `<div class="modal" id="mbg"><div class="inner" style="max-width:560px"><div class="top"><h2>Apoie o jogo</h2><button class="ghost" id="mclose">Fechar</button></div>${supportHTML()}</div></div>`;
+  $('#mclose').onclick = () => $('#modal').innerHTML = '';
+  $('#mbg').onclick = e => { if (e.target.id === 'mbg') $('#modal').innerHTML = ''; };
+}
 function sponsorHTML(variant) {
   return `<div class="sponsor ${variant || ''}"><span class="sp-tag">Patrocínio</span><div class="sp-body"><b>Sua marca aqui</b><span>Apareça para quem está no meio do leilão. Fale comigo: <a class="mail" href="#">e-mail</a> · <a href="https://x.com/emiverj" target="_blank" rel="noopener">@emiverj</a></span></div></div>`;
 }
@@ -1186,6 +1204,7 @@ function showRules() {
   $('#mbg').onclick = e => { if (e.target.id === 'mbg') $('#modal').innerHTML = ''; };
 }
 $('#rules-btn').onclick = showRules;
+$('#support-link').onclick = e => { e.preventDefault(); showSupport(); };
 /* ---------- tema e modo streamer (preferência de cada jogador, guardada no navegador) ---------- */
 function applyPrefs() {
   let th = 'dark', sm = false; try { th = localStorage.getItem('acabou-theme') || 'dark'; sm = localStorage.getItem('acabou-streamer') === '1'; } catch (e) {}
