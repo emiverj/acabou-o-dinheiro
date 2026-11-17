@@ -64,6 +64,11 @@ export const KITS = {
   'Leeds United': K('#ffffff', '#ffcd00', '#1d428a'),
   'Celta': K('#8ac3ee', '#ffffff', '#0b2a4a'),
   'Base': K('#2f6b45', '#f3ecd8', '#f3ecd8', 'hoops'),
+  'Ipswich Town': K('#1f4fa8', '#ffffff', '#ffffff'),
+  'Al-Hilal': K('#1b4fa0', '#ffffff', '#ffffff'),
+  'Deportivo La Coruña': K('#ffffff', '#1d4fa0', '#1d4fa0', 'stripes'),
+  'Al-Jazira': K('#c8102e', '#111111', '#ffffff'),
+  'Al-Sadd': K('#ffffff', '#111111', '#111111'),
   // Brasileirão
   'Palmeiras': K('#006437', '#ffffff', '#ffffff'),
   'Flamengo': K('#c4161c', '#111111', '#ffffff', 'hoops'),

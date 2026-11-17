@@ -6,6 +6,7 @@ import { play, isMuted, setMuted, playAcabou } from './sound.js';
 import { resultImage } from './share.js';
 import { rulesHTML } from './rules.js';
 import { jerseySVG } from './kits.js';
+import { specialIcon } from './traits.js';
 import { createViewer } from './match.js';
 
 const $ = s => document.querySelector(s);
@@ -394,7 +395,7 @@ function renderLobby() {
       </div>
     </div>
     <div id="lobby-record"></div>
-    <div class="panel" style="margin-top:18px"><h2>Livro de regras</h2><div class="lead">Leia antes de começar: vale para todos nesta sala.</div><div id="rulebook"></div></div>
+    <button class="rules-link" id="rulebook">${ICON.book}<span><b>Livro de regras</b><small>Leia antes de começar: vale para todos nesta sala</small></span><em>Abrir</em></button>
     ${sponsorHTML()}`;
     $('#leave').onclick = leaveRoom;
     fillMail();
@@ -402,7 +403,7 @@ function renderLobby() {
     $('#copy').onclick = async () => { const link = location.origin + location.pathname + '?sala=' + code; try { await navigator.clipboard.writeText(`Bora pro leilão no "Acabou o dinheiro?" 💸 Código: ${code} — ${link}`); toast('Convite copiado!'); } catch (e) { toast('Código: ' + code); } };
   }
   const s = state.settings;
-  $('#rulebook').innerHTML = rulesHTML(s);
+  $('#rulebook').onclick = showRules;
   $('#lobby-record').innerHTML = recordHTML();
   const nT = state.teams.length, poolEst = Math.ceil(nT * 1.5) + 1 + Math.ceil(nT * 12.5);
   $('#rules').innerHTML = `<b>Pote desta partida:</b> ${poolEst} jogadores sorteados para ${nT * 11} vagas.<br><b>Regras da sala:</b> base ${BASE_NAMES[s.base] || 'Europa'} · orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · leilão ${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
@@ -466,7 +467,7 @@ function cardHTML(p, hide) {
     <div class="pc-shirt">${jerseySVG(p.t, p.n)}</div>
     <div class="pc-name">${esc(p.n)}</div>
     <div class="pc-club">${esc(p.t)}</div>
-    <div class="pc-traits">${p.x ? `<span class="special" title="${p.l ? 'Lenda: especial dado a um jogador histórico' : 'Especial dos 88+'}">${p.l ? '👑' : '★'} ${esc(p.x)}</span>` : p.o < 85 ? '' : (p.k && p.k[0] ? `<span>${esc(p.k[0])}</span>` : '')}</div>
+    <div class="pc-traits">${p.x ? `<span class="special" title="Especial${p.l ? ' de lenda' : ''}"><i>${specialIcon(p.x)}</i> ${esc(p.x)}</span>${p.l ? '<span class="legend" title="Lenda: jogador histórico">👑 Lenda</span>' : ''}` : p.o < 85 ? '' : (p.k && p.k[0] ? `<span>${esc(p.k[0])}</span>` : '')}</div>
     <div class="pc-foot"><div><span>Posições</span><b>${posLabel(p)}${p.a.length ? ' · ' + alt : ''}</b></div><div><span>${p.w ? 'Altura · peso' : 'Altura'}</span><b>${hw}</b></div></div>
   </div>`;
 }

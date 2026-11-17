@@ -182,7 +182,7 @@ export function playMatch(state, h, a, knockout, neutral) {
       const r = Math.random(); let kind = 'jogada';
       if (r < 0.09) kind = 'penalti'; else if (r < 0.15) kind = 'falta'; else if (r < 0.31) kind = 'cabeca';
       let p, as = null;
-      if (kind === 'penalti' || kind === 'falta') { const tk = takers(state, team); p = (kind === 'falta' ? tk.find(x => hasK(getP(state, x.id), 'Cobrador')) || tk[0] : tk[0]).id; }
+      if (kind === 'penalti' || kind === 'falta') { const tk = takers(state, team); p = (kind === 'falta' ? tk.find(x => getP(state, x.id).x === 'Batedor oficial') || tk.find(x => hasK(getP(state, x.id), 'Cobrador')) || tk[0] : tk[0]).id; }
       else p = pickScorer(state, team, kind === 'cabeca');
       if ((kind === 'jogada' || kind === 'cabeca') && Math.random() < 0.78) as = pickAssist(state, team, p);
       ev.push({ m: minute(), t: 'gol', s: side, kind, p, as });
@@ -560,6 +560,9 @@ export function tickAuction(state, now) {
     if (lot.auto && now < lot.endsAt) return false;
     const r = sealed(state); closeLot(state, r.id, r.price, now); return true;
   }
+  // ninguém (além de quem está na frente) tem dinheiro para cobrir → fecha na hora: vende ao líder ou descarta
+  const canCover = state.teams.some(t => t.id !== lot.leader && needFor(state, t, PLAYERS[lot.pid]) && maxAllowed(t) >= minBid(state, t));
+  if (!canCover) { closeLot(state, lot.leader, lot.price, now); lot.quick = true; return true; }
   let changed = false;
   for (const t of state.teams) {
     if (!botLike(t) || lot.leader === t.id) continue;
