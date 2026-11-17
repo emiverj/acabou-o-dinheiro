@@ -276,3 +276,76 @@ select{background:var(--bg2);border:1px solid var(--line2);border-radius:10px;pa
 .modal .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .modal h2{font-family:Anton;font-weight:400;font-size:28px;text-transform:uppercase}
 @media (max-width:900px){ .lgrid{grid-template-columns:1fr} .code-big{font-size:32px;letter-spacing:6px} .fslot .sn{font-size:10px} }
+
+/* ===== v2 ===== */
+a.logo{color:inherit;text-decoration:none}
+.logo-img{width:44px;height:44px;border-radius:10px;image-rendering:pixelated;border:2px solid var(--gold);object-fit:cover}
+.top-right{display:flex;gap:8px;align-items:center}
+.ghost.small{padding:6px 12px;font-size:13px}
+.quote{margin-top:22px;display:flex;gap:14px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;max-width:520px}
+.quote img{width:150px;border-radius:10px;image-rendering:pixelated;flex:none}
+.quote figcaption b{display:block;font-family:Anton;font-size:28px;text-transform:uppercase;color:var(--gold);line-height:1}
+.quote figcaption span{font-size:13px;color:var(--muted)}
+/* carta do jogador */
+.lot-body{display:grid;grid-template-columns:250px 1fr;gap:20px;margin-top:12px;align-items:start}
+.lot-right .board{margin-top:0}
+.pcard{position:relative;border-radius:18px;padding:14px 14px 12px;background:linear-gradient(160deg,#2b3a33,#141d18 70%);border:2px solid #6d7a72;box-shadow:0 14px 40px rgba(0,0,0,.45);overflow:hidden;animation:cardIn .4s cubic-bezier(.2,1.3,.4,1)}
+@keyframes cardIn{from{transform:translateY(14px) scale(.96);opacity:0}to{transform:none;opacity:1}}
+.pcard::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.08) 45%,transparent 55%);pointer-events:none}
+.pcard.silver{background:linear-gradient(160deg,#4a5560,#1b2228 72%);border-color:#b9c3cc}
+.pcard.gold{background:linear-gradient(160deg,#7a5a12,#2a1f07 72%);border-color:#ffc833}
+.pcard.elite{background:linear-gradient(160deg,#2a1450,#0d0620 70%);border-color:#c9a7ff;box-shadow:0 0 0 1px rgba(201,167,255,.4),0 14px 40px rgba(120,60,220,.35)}
+.pcard.neutral{background:linear-gradient(160deg,#173d29,#0b1f14 72%);border-color:rgba(243,236,216,.4)}
+.pc-head{display:flex;justify-content:space-between;align-items:flex-start}
+.pc-ovr{font-family:Anton;font-size:44px;line-height:.9}
+.pc-pos{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:15px;letter-spacing:1px;color:var(--gold)}
+.pc-nat{font-size:12px;font-weight:700;text-align:right;max-width:110px;background:rgba(0,0,0,.3);border-radius:6px;padding:3px 7px}
+.pc-shirt{display:flex;justify-content:center;margin:-6px 0 -4px}
+.pc-shirt .jersey{width:170px;height:170px;filter:drop-shadow(0 8px 14px rgba(0,0,0,.45))}
+.pc-name{font-family:Anton;font-size:26px;text-transform:uppercase;text-align:center;line-height:1.02;letter-spacing:.3px}
+.pc-club{text-align:center;font-weight:700;font-size:14px;color:#dfe7df;margin-top:3px}
+.pc-foot{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid rgba(243,236,216,.18)}
+.pc-foot span{display:block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:800}
+.pc-foot b{font-family:'IBM Plex Mono',monospace;font-size:12px}
+.bids.four{grid-template-columns:repeat(4,1fr)}
+.bid.max{background:var(--gold)}
+.custom .pass{min-width:100px}
+/* linhas do tempo */
+.tline{list-style:none}
+.tline li{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:center;padding:7px 2px;border-bottom:1px dashed var(--line)}
+.tline li:last-child{border-bottom:0}
+.tline .n{font-family:Anton;color:var(--muted)}
+.tline .who b{display:block;font-size:14px}
+.tline .who small{font-size:12px;color:var(--muted);display:flex;gap:5px;align-items:center}
+.tline .v{font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--gold)}
+.tline li.empty{display:block;color:var(--muted);font-size:13px}
+.fslot .pen{color:var(--red)}
+/* patrocínio */
+.sponsor{display:flex;align-items:center;gap:16px;margin:18px 0;padding:14px 18px;border-radius:14px;border:1px dashed rgba(255,200,51,.55);background:linear-gradient(90deg,rgba(255,200,51,.10),rgba(255,200,51,.02))}
+.sponsor .sp-tag{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#1b1503;background:var(--gold);border-radius:5px;padding:3px 7px;flex:none}
+.sponsor .sp-body b{display:block;font-family:Anton;font-size:20px;text-transform:uppercase;letter-spacing:.5px}
+.sponsor .sp-body span{font-size:13px;color:#cfd9cf}
+.sponsor a,.site-foot a{color:var(--gold)}
+.sponsor.mini{margin:14px 0 4px}
+/* livro de regras */
+.rulebook{padding-left:22px;display:flex;flex-direction:column;gap:9px;font-size:14px;line-height:1.55;color:#dbe4db}
+.rulebook b{color:var(--chalk)}
+.rulebook li::marker{font-family:Anton;color:var(--gold)}
+/* rodapé */
+.site-foot .contact{font-size:14px;margin-bottom:8px;color:var(--chalk)}
+.site-foot .legal{font-size:11px;color:#6f8476;max-width:780px;line-height:1.55}
+@media (max-width:900px){
+  .lot-body{grid-template-columns:1fr}
+  .pcard{max-width:300px;margin:0 auto}
+  .quote img{width:110px}
+  .custom{flex-wrap:wrap}
+  .sponsor{flex-direction:column;align-items:flex-start}
+}
+.field-pitch::before,.field-pitch::after{pointer-events:none;z-index:0}
+.fslot{z-index:1}
+.lot-right{min-width:0}
+.lot-right .board{grid-template-columns:auto minmax(0,1fr)}
+.lot-right .leader{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.field-pitch{max-width:560px;margin:0 auto}
+.custom input{min-width:0}
+.custom button{min-width:0;padding:10px 14px;flex:none}

@@ -1,4 +1,5 @@
 // Acabou o dinheiro? — regras, simulação e motor do leilão (roda no navegador do anfitrião)
+// Ao mudar qualquer regra aqui, atualize também o livro de regras em rules.js
 import { PLAYERS } from './players.js';
 
 export const POS_PT = { GK:'GOL', CB:'ZAG', LB:'LE', RB:'LD', LWB:'ALE', RWB:'ALD', CDM:'VOL', CM:'MC', CAM:'MEI', LM:'ME', RM:'MD', LW:'PE', RW:'PD', ST:'ATA', CF:'SA' };
@@ -6,43 +7,35 @@ export const COLORS = ['#ffc833','#ff6b5a','#5ab0ff','#b98cff','#3ddc84','#ff9a3
 export const BOT_NAMES = [['Ressaca EC','Prof. Zeca'],['Bola Murcha FC','Seu Juvenal'],['Canela Seca AC','Dona Cida'],['Real Várzea','Mister Tonhão'],['Atlético Resenha','Pardal'],['Unidos do Churrasco','Tia Neide'],['EC Fominha','Careca do Bar'],['Sport Club Galera','Prof. Xandão']];
 export const SPEEDS = { normal:{ open:10, reset:6, after:2200, ai:[500,1700] }, rapido:{ open:7, reset:4, after:1500, ai:[300,1100] } };
 
-/* ---------------- Formações (estilo EA FC) ---------------- */
+/* ---------------- Formações ---------------- */
 const BACK4 = [['LB',14,27],['CB',38,22],['CB',62,22],['RB',86,27]];
 const BACK3 = [['CB',26,22],['CB',50,19],['CB',74,22]];
-const BACK5W = [['LWB',9,36],['CB',30,22],['CB',50,19],['CB',70,22],['RWB',91,36]];
-const BACK5 = [['LB',9,32],['CB',30,22],['CB',50,19],['CB',70,22],['RB',91,32]];
+const BACK5 = [['LB',9,34],['CB',30,22],['CB',50,19],['CB',70,22],['RB',91,34]];
 const GKS = [['GK',50,6]];
 const f = (...parts) => parts.flat().map(([pos,x,y]) => ({ pos, x, y }));
 export const FORMATIONS = {
-  '4-3-3':        f(GKS, BACK4, [['CM',28,50],['CM',50,46],['CM',72,50],['LW',17,77],['ST',50,85],['RW',83,77]]),
-  '4-3-3 (2)':    f(GKS, BACK4, [['CM',30,52],['CDM',50,40],['CM',70,52],['LW',17,77],['ST',50,85],['RW',83,77]]),
-  '4-3-3 (4)':    f(GKS, BACK4, [['CM',28,48],['CAM',50,60],['CM',72,48],['LW',17,78],['ST',50,86],['RW',83,78]]),
-  '4-4-2':        f(GKS, BACK4, [['LM',13,56],['CM',38,50],['CM',62,50],['RM',87,56],['ST',38,83],['ST',62,83]]),
-  '4-4-2 (2)':    f(GKS, BACK4, [['LM',13,58],['CDM',38,44],['CDM',62,44],['RM',87,58],['ST',38,83],['ST',62,83]]),
-  '4-2-3-1':      f(GKS, BACK4, [['CDM',37,42],['CDM',63,42],['CAM',20,64],['CAM',50,64],['CAM',80,64],['ST',50,86]]),
-  '4-2-3-1 (2)':  f(GKS, BACK4, [['CDM',37,42],['CDM',63,42],['LM',14,64],['CAM',50,64],['RM',86,64],['ST',50,86]]),
-  '4-1-2-1-2':    f(GKS, BACK4, [['CDM',50,38],['LM',16,55],['RM',84,55],['CAM',50,64],['ST',37,85],['ST',63,85]]),
-  '4-1-2-1-2 (2)':f(GKS, BACK4, [['CDM',50,38],['CM',30,52],['CM',70,52],['CAM',50,65],['ST',37,85],['ST',63,85]]),
-  '4-2-2-2':      f(GKS, BACK4, [['CDM',37,42],['CDM',63,42],['CAM',22,65],['CAM',78,65],['ST',37,85],['ST',63,85]]),
-  '4-1-4-1':      f(GKS, BACK4, [['CDM',50,38],['LM',13,58],['CM',37,55],['CM',63,55],['RM',87,58],['ST',50,85]]),
-  '4-5-1':        f(GKS, BACK4, [['LM',13,56],['CAM',34,63],['CM',50,46],['CAM',66,63],['RM',87,56],['ST',50,86]]),
-  '4-2-4':        f(GKS, BACK4, [['CM',37,48],['CM',63,48],['LW',13,76],['ST',37,85],['ST',63,85],['RW',87,76]]),
-  '3-5-2':        f(GKS, BACK3, [['CDM',37,42],['CDM',63,42],['LM',11,57],['CAM',50,63],['RM',89,57],['ST',37,85],['ST',63,85]]),
-  '3-4-3':        f(GKS, BACK3, [['LM',11,54],['CM',37,49],['CM',63,49],['RM',89,54],['LW',19,79],['ST',50,86],['RW',81,79]]),
-  '3-4-2-1':      f(GKS, BACK3, [['LM',11,52],['CM',37,47],['CM',63,47],['RM',89,52],['CAM',32,68],['CAM',68,68],['ST',50,87]]),
-  '5-3-2':        f(GKS, BACK5W, [['CM',28,52],['CM',50,47],['CM',72,52],['ST',37,84],['ST',63,84]]),
-  '5-2-1-2':      f(GKS, BACK5W, [['CM',35,48],['CM',65,48],['CAM',50,64],['ST',37,85],['ST',63,85]]),
-  '5-4-1':        f(GKS, BACK5, [['LM',13,57],['CM',37,52],['CM',63,52],['RM',87,57],['ST',50,85]]),
+  '4-3-3':          f(GKS, BACK4, [['CM',28,50],['CDM',50,42],['CM',72,50],['LW',17,77],['ST',50,85],['RW',83,77]]),
+  '4-3-3 Ofensivo': f(GKS, BACK4, [['CM',28,48],['CAM',50,61],['CM',72,48],['LW',17,78],['ST',50,86],['RW',83,78]]),
+  '4-4-2':          f(GKS, BACK4, [['LM',13,56],['CM',38,48],['CM',62,48],['RM',87,56],['ST',38,83],['ST',62,83]]),
+  '4-2-3-1':        f(GKS, BACK4, [['CDM',37,42],['CDM',63,42],['LM',15,64],['CAM',50,64],['RM',85,64],['ST',50,86]]),
+  '4-1-2-1-2 Losango': f(GKS, BACK4, [['CDM',50,38],['CM',28,52],['CM',72,52],['CAM',50,65],['ST',37,85],['ST',63,85]]),
+  '3-5-2':          f(GKS, BACK3, [['CDM',37,42],['CDM',63,42],['LM',11,57],['CAM',50,63],['RM',89,57],['ST',37,85],['ST',63,85]]),
+  '3-4-3':          f(GKS, BACK3, [['LM',11,54],['CM',37,49],['CM',63,49],['RM',89,54],['LW',19,79],['ST',50,86],['RW',81,79]]),
+  '5-3-2':          f(GKS, BACK5, [['CM',28,52],['CDM',50,45],['CM',72,52],['ST',37,84],['ST',63,84]]),
 };
 export const FORMATION_NAMES = Object.keys(FORMATIONS);
 
 /* ---------------- Jogadores ---------------- */
 export function getP(state, id) {
   if (id >= 1000) return state.base[id];
-  return PLAYERS[id];
+  const p = PLAYERS[id];
+  if (state.penal && state.penal[id]) return { ...p, o: p.o - 5, s: p.s.map(x => x - 5), pen: true };
+  return p;
 }
 export const isGK = p => p.p === 'GK';
 
+// funções equivalentes: trocar entre elas não custa rendimento
+const EQUIV = { CM:['CDM'], CDM:['CM'], LB:['LWB'], LWB:['LB'], RB:['RWB'], RWB:['RB'], LM:['LW'], LW:['LM'], RM:['RW'], RW:['RM'] };
 const LINE = { GK:0, CB:1, LB:1, RB:1, LWB:1, RWB:1, CDM:2, CM:2, CAM:2, LM:2, RM:2, LW:3, RW:3, ST:3, CF:3 };
 const NEAR = { LB:['LWB','LM'], RB:['RWB','RM'], LWB:['LB','LM'], RWB:['RB','RM'], CB:['CDM'], CDM:['CM','CB'], CM:['CDM','CAM'],
   CAM:['CM','CF','ST'], LM:['LW','LWB','CM'], RM:['RW','RWB','CM'], LW:['LM','ST'], RW:['RM','ST'], ST:['CF','CAM'], CF:['ST','CAM'] };
@@ -50,6 +43,8 @@ export function fit(p, slot) {
   if ((p.p === 'GK') !== (slot === 'GK')) return 0.35;
   if (p.p === slot) return 1;
   if (p.a.includes(slot)) return 0.97;
+  const eq = EQUIV[slot] || [];
+  if (eq.includes(p.p) || p.a.some(a => eq.includes(a))) return 0.97;
   const near = NEAR[slot] || [];
   if (near.includes(p.p) || p.a.some(a => near.includes(a))) return 0.9;
   const d = Math.abs(LINE[p.p] - LINE[slot]);
@@ -134,6 +129,17 @@ export const hasGK = (state, t) => t.squad.some(id => isGK(getP(state, id)));
 export const fieldCount = (state, t) => t.squad.filter(id => !isGK(getP(state, id))).length;
 export function needFor(state, t, p) { return isGK(p) ? !hasGK(state, t) : fieldCount(state, t) < 10; }
 export const maxAllowed = t => slots(t) > 0 ? t.budget - (slots(t) - 1) : 0;
+// piso para craques: 85+ = 5% do orçamento, 89+ = 10% (ex.: €5 e €10 com €100)
+export function floorFor(state, p) {
+  const b = state.settings.budget;
+  return p.o >= 89 ? Math.round(b * 0.10) : p.o >= 85 ? Math.round(b * 0.05) : 1;
+}
+// menor lance válido deste time no lote atual
+export function minBid(state, t) {
+  const lot = state.lot, p = PLAYERS[lot.pid];
+  const base = lot.leader ? lot.price + 1 : 1;
+  return Math.max(base, Math.min(floorFor(state, p), maxAllowed(t)));
+}
 
 /* ---------------- Simulação de partidas ---------------- */
 function poisson(l) { const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= Math.random(); } while (p > L); return k - 1; }
@@ -297,18 +303,18 @@ export function topScorers(state, n) {
 /* ---------------- Motor do leilão (anfitrião) ---------------- */
 export function newRoomState(code, host, settings) {
   return { v: 0, code, hostId: host.id, phase: 'lobby', settings, teams: [mkTeam(host.id, host.name, host.team, false, 0)],
-    lot: null, lotNo: 0, pool: null, log: [], base: {}, cup: null, lineupEndsAt: 0 };
+    lot: null, lotNo: 0, pool: null, log: [], history: [], penal: {}, base: {}, cup: null, lineupEndsAt: 0 };
 }
 export function mkTeam(id, coach, name, bot, idx) {
-  return { id, coach, name: name || ('FC ' + coach), bot, color: COLORS[idx % COLORS.length], budget: 100, squad: [], formation: '4-3-3', lineup: null, ready: false, pers: bot ? botPersona() : null };
+  return { id, coach, name: name || ('FC ' + coach), bot, color: COLORS[idx % COLORS.length], budget: 100, squad: [], formation: '4-3-3', lineup: null, ready: false, paid: {}, pers: bot ? botPersona() : null };
 }
 function botPersona() { return pick([{ n:'Gastador', k:1.3 }, { n:'Pão-duro', k:0.78 }, { n:'Equilibrado', k:1 }, { n:'Caçador de craques', k:0, star:true }, { n:'Apostador', k:0, wild:true }]); }
 
 export function startAuction(state) {
   const pool = PLAYERS.map((_, i) => i);
-  state.pool = pool; state.phase = 'auction'; state.lotNo = 0; state.log = [];
-  state.teams.forEach(t => { t.budget = state.settings.budget; t.squad = []; t.lineup = null; t.ready = false; t.paid = {}; });
-  if (state.teams.some(t => t.bot)) state.teams.forEach(t => { if (t.bot) t.formation = pick(['4-3-3','4-2-3-1','4-4-2','4-3-3 (2)','3-5-2','4-1-2-1-2 (2)']); });
+  state.pool = pool; state.phase = 'auction'; state.lotNo = 0; state.log = []; state.history = []; state.penal = {}; state.base = {};
+  state.teams.forEach(t => { t.budget = state.settings.budget; t.squad = []; t.lineup = Array(11).fill(null); t.ready = false; t.paid = {}; });
+  if (state.teams.some(t => t.bot)) state.teams.forEach(t => { if (t.bot) t.formation = pick(FORMATION_NAMES); });
   const ovr = PLAYERS.map(p => p.o); state.lo = Math.min(...ovr); state.hi = Math.max(...ovr);
 }
 export function addLog(state, msg) { state.log.unshift(msg); if (state.log.length > 14) state.log.length = 14; }
@@ -320,6 +326,8 @@ function botMax(state, t, p) {
   const avg = state.settings.budget / 11;
   let v = 1 + Math.pow(r, 2) * avg * 4.2;
   v *= Math.min(1.9, Math.max(.35, per / avg));
+  // dinheiro sobrando no fim do leilão: bot fica mais agressivo para não terminar com caixa parado
+  if (per > avg) v += (per - avg) * (0.35 + r) * (s <= 4 ? 1.4 : 0.8);
   let k = t.pers.k; if (t.pers.star) k = r >= .6 ? 1.5 : .8; if (t.pers.wild) k = rnd(.65, 1.55);
   v *= k * rnd(.82, 1.2);
   // encaixe na formação do bot
@@ -328,6 +336,7 @@ function botMax(state, t, p) {
   const sameLine = slotsF.filter(sp => LINE[sp] === LINE[p.p]).length;
   const have = t.squad.map(id => getP(state, id)).filter(q => LINE[q.p] === LINE[p.p]).length;
   if (!isGK(p)) { v *= bestFit >= .97 ? 1.05 : .85; if (have >= sameLine) v *= .55; }
+  v = Math.max(v, floorFor(state, p) * (r >= .5 ? 1.15 : 1));
   return Math.max(1, Math.min(Math.round(v), maxAllowed(t)));
 }
 export function chooseLot(state, now) {
@@ -354,8 +363,8 @@ export function placeBid(state, teamId, amount, now) {
   const p = PLAYERS[lot.pid];
   if (lot.leader === teamId) return 'Você já está na frente';
   if (!needFor(state, t, p)) return isGK(p) ? 'Você já tem goleiro' : 'Seu elenco de linha está completo';
-  const min = lot.leader ? lot.price + 1 : 1;
-  if (amount < min) return 'Lance abaixo do mínimo';
+  const min = minBid(state, t);
+  if (amount < min) return 'Lance mínimo: €' + min;
   if (amount > maxAllowed(t)) return 'Acima do seu limite';
   lot.price = amount; lot.leader = teamId; lot.passed = lot.passed.filter(id => id !== teamId);
   const sp = SPEEDS[state.settings.speed];
@@ -375,7 +384,9 @@ function sealed(state) {
   if (!bids.length) return { id: null, price: 0 };
   shuffle(bids).sort((a, b) => b.max - a.max);
   const w = bids[0], floor = lot.leader === w.id ? lot.price : lot.price + 1;
-  const price = bids.length === 1 ? Math.max(1, floor) : Math.min(w.max, Math.max(floor, bids[1].max + 1));
+  let price = bids.length === 1 ? Math.max(1, floor) : Math.min(w.max, Math.max(floor, bids[1].max + 1));
+  const wt = state.teams.find(t => t.id === w.id);
+  price = Math.max(price, Math.min(floorFor(state, p), maxAllowed(wt)));
   return { id: w.id, price: Math.max(1, price) };
 }
 export function passLot(state, teamId) {
@@ -385,9 +396,11 @@ export function passLot(state, teamId) {
 function closeLot(state, winnerId, price, now) {
   const lot = state.lot, p = PLAYERS[lot.pid];
   lot.status = winnerId ? 'sold' : 'nosale'; lot.winner = winnerId; lot.price = price; lot.closedAt = now;
+  state.history.push({ no: lot.no, pid: lot.pid, team: winnerId || null, price: winnerId ? price : 0 });
   if (winnerId) {
     const t = state.teams.find(x => x.id === winnerId); t.budget -= price; t.squad.push(lot.pid); t.paid[lot.pid] = price;
-    addLog(state, `${p.n} → ${t.name} por R$ ${price}`);
+    placeNew(state, t, lot.pid);
+    addLog(state, `${p.n} → ${t.name} por €${price}`);
   } else addLog(state, `${p.n} ficou sem lance`);
 }
 // chamado a cada ~200ms no anfitrião; devolve true se o estado mudou
@@ -413,7 +426,7 @@ export function tickAuction(state, now) {
   for (const t of state.teams) {
     if (!t.bot || lot.leader === t.id) continue;
     const a = state._ai[t.id]; if (now < a.next) continue;
-    const min = lot.leader ? lot.price + 1 : 1, cap = Math.min(a.max, maxAllowed(t));
+    const min = minBid(state, t), cap = Math.min(a.max, maxAllowed(t));
     if (cap >= min && needFor(state, t, PLAYERS[lot.pid])) {
       let inc = 1; const gap = cap - min;
       if (gap > 10 && Math.random() < .45) inc = pick([2,3,5]);
@@ -430,18 +443,60 @@ export function skipToEnd(state, now) {
   while (chooseLot(state, now)) { const r = sealed(state); closeLot(state, r.id, r.price, now); }
   endAuction(state);
 }
+// Vagas em branco: recebem o pior jogador que sobrou na posição (com −5 de rendimento); sem sobra, entra um Cria da Base
 export function endAuction(state) {
-  let bid = 1000;
+  let bid = 1000; state.penal = state.penal || {};
+  const takeWorst = filter => {
+    const c = state.pool.filter(id => filter(PLAYERS[id])).sort((a, b) => PLAYERS[a].o - PLAYERS[b].o);
+    if (!c.length) return null; state.pool.splice(state.pool.indexOf(c[0]), 1); return c[0];
+  };
   state.teams.forEach(t => {
+    if (!t.lineup || t.lineup.length !== 11) t.lineup = arrange(state, t, t.formation);
+    const slotsF = FORMATIONS[t.formation];
     while (slots(t) > 0) {
-      const gk = !hasGK(state, t);
-      const p = { n: 'Cria da Base', o: Math.round(rnd(62, 68)), p: gk ? 'GK' : pick(['CB','CM','ST','LB','RB','CDM']), a: [], s: Array(6).fill(62), c: 'Brasil', t: 'Base', base: true };
-      state.base[bid] = p; t.squad.push(bid); t.paid[bid] = 0; bid++;
+      let id;
+      if (!hasGK(state, t)) id = takeWorst(isGK);
+      else {
+        const free = slotsF.map((s, i) => t.lineup[i] == null && s.pos !== 'GK' ? s.pos : null).filter(Boolean);
+        const want = free[0];
+        id = want ? (takeWorst(p => !isGK(p) && fit(p, want) >= 0.97) ?? takeWorst(p => !isGK(p))) : takeWorst(p => !isGK(p));
+      }
+      if (id != null) { state.penal[id] = true; }
+      else {
+        const gk = !hasGK(state, t);
+        state.base[bid] = { n: 'Cria da Base', o: Math.round(rnd(62, 68)), p: gk ? 'GK' : pick(['CB','CM','ST','LB','RB','CDM']), a: [], s: Array(6).fill(62), c: 'Brasil', t: 'Base', base: true };
+        id = bid++;
+      }
+      t.squad.push(id); t.paid[id] = 0; placeNew(state, t, id);
+      addLog(state, `${getP(state, id).n} completou o ${t.name} (vaga em branco)`);
     }
     if (t.bot) { const b = bestFormation(state, t.squad); t.formation = b.name; t.lineup = b.lineup; t.ready = true; }
-    else { t.lineup = autoLineup(state, t.squad, t.formation); t.ready = false; }
+    else { if (t.lineup.some(x => x == null)) t.lineup = autoLineup(state, t.squad, t.formation); t.ready = false; }
   });
   state.lot = null; state.phase = 'lineup'; state.lineupEndsAt = Date.now() + 150000;
+}
+// coloca um jogador novo na melhor vaga livre do campinho
+export function placeNew(state, t, id) {
+  if (!t.lineup || t.lineup.length !== 11) t.lineup = Array(11).fill(null);
+  if (t.lineup.includes(id)) return;
+  const slotsF = FORMATIONS[t.formation] || FORMATIONS['4-3-3']; const p = getP(state, id);
+  let best = -1, bv = -1;
+  slotsF.forEach((s, i) => { if (t.lineup[i] != null) return; const v = fit(p, s.pos); if (v > bv) { bv = v; best = i; } });
+  if (best >= 0) t.lineup[best] = id;
+}
+// reorganiza todo o elenco atual numa formação (mantém vagas vazias para o que falta)
+export function arrange(state, t, formation) {
+  const res = Array(11).fill(null), slotsF = FORMATIONS[formation];
+  const ids = t.squad.slice().sort((a, b) => getP(state, b).o - getP(state, a).o);
+  for (const id of ids) { let best = -1, bv = -1; slotsF.forEach((s, i) => { if (res[i] != null) return; const v = fit(getP(state, id), s.pos); if (v > bv) { bv = v; best = i; } }); if (best >= 0) res[best] = id; }
+  return res;
+}
+// troca feita pelo técnico durante o leilão (lineup com vagas null)
+export function setArrangement(state, teamId, formation, lineup) {
+  const t = state.teams.find(x => x.id === teamId); if (!t || !FORMATIONS[formation] || !Array.isArray(lineup) || lineup.length !== 11) return;
+  const ids = lineup.filter(x => x != null);
+  if (new Set(ids).size !== ids.length || ids.length !== t.squad.length || !ids.every(id => t.squad.includes(id))) return;
+  t.formation = formation; t.lineup = lineup.map(x => x == null ? null : x);
 }
 export function setLineup(state, teamId, formation, lineup) {
   const t = state.teams.find(x => x.id === teamId); if (!t || !FORMATIONS[formation]) return;
