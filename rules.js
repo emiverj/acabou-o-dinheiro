@@ -3,13 +3,16 @@
 import { FORMATION_NAMES, SPEEDS, floorFor } from './engine.js';
 
 export function rulesHTML(settings) {
-  const s = settings || { budget: 100, speed: 'normal', format: 'liga' };
+  const s = settings || { base: 'europa', budget: 100, speed: 'normal', format: 'liga' };
   const b = s.budget, sp = SPEEDS[s.speed] || SPEEDS.normal;
   const f85 = floorFor({ settings: s }, { o: 85 }), f89 = floorFor({ settings: s }, { o: 89 });
   const fmtName = { liga: 'pontos corridos', mata: 'mata-mata', grupos: 'grupos + mata-mata' }[s.format] || 'pontos corridos';
   return `
   <ol class="rulebook">
     <li><b>Objetivo.</b> Cada técnico tem <b>R$ ${b}</b> para montar um time de 11 titulares no leilão. Depois, os times se enfrentam num campeonato simulado (${fmtName}).</li>
+    <li><b>Base de jogadores.</b> ${s.base === 'brasileirao'
+      ? 'Esta sala usa a base <b>Brasileirão</b>: elencos dos 20 clubes da Série A 2026 (444 jogadores). O overall segue uma régua própria, de <b>74 a 91</b>, medida só dentro do campeonato, então um 85 do Brasileirão não é o mesmo 85 da Europa. A nota combina valor de mercado, minutos em campo, aproveitamento do time e, para atacantes e meias, gols e assistências na temporada.'
+      : 'Esta sala usa a base <b>Europa</b>: jogadores 81+ das cinco grandes ligas e dos clubes da Champions e da Liga Europa.'} Quem cria a sala escolhe a base; as duas nunca se misturam numa mesma partida.</li>
     <li><b>O elenco.</b> São 11 titulares: <b>1 goleiro e 10 jogadores de linha</b>. Não existe banco de reservas. Quem já tem goleiro não disputa outro, e quem já tem 10 de linha só disputa goleiro.</li>
     <li><b>O pote da partida.</b> Nem todos os jogadores entram em toda partida: o jogo sorteia um pote com cerca de <b>25% a mais de jogadores de linha do que as vagas</b>, mais goleiros de sobra, mantendo a proporção de craques. Exemplo: com 6 técnicos são 66 vagas e um pote de 85 jogadores. O número aparece no lobby e no leilão.</li>
     <li><b>O leilão.</b> Um jogador vai ao martelo por vez. O lance inicial é R$ 1 e cada novo lance precisa ser maior que o anterior. O lote tem ${sp.open}s e todo lance devolve o relógio para pelo menos ${sp.reset}s. Quando o tempo acaba, o maior lance leva: dou-lhe uma, dou-lhe duas, dou-lhe três.</li>

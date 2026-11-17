@@ -5,3 +5,4 @@
 - **Livro de regras:** sempre que qualquer regra do jogo mudar (`engine.js`, opções de sala, formações, pisos de lance etc.), atualize `rules.js` na mesma alteração.
 - Não mencionar EA / EA SPORTS FC em nenhum lugar do site; o aviso legal genérico fica no rodapé (`index.html`).
 - Teste local: `python3 -m http.server` na pasta e abrir `?local` na URL para usar o modo local (BroadcastChannel) sem Supabase.
+- Duas bases de jogadores, escolhidas na criação da sala (`settings.base`): `players.js` (Europa, 81+) e `players_br.js` (Brasileirão Série A 2026, régua própria 74–91 calculada a partir do Transfermarkt). `db.js` troca a base ativa; nunca misture as duas numa partida.

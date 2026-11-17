@@ -1,6 +1,6 @@
 // Acabou o dinheiro? — regras, simulação e motor do leilão (roda no navegador do anfitrião)
 // Ao mudar qualquer regra aqui, atualize também o livro de regras em rules.js
-import { PLAYERS } from './players.js';
+import { PLAYERS } from './db.js';
 
 export const POS_PT = { GK:'GOL', CB:'ZAG', LB:'LE', RB:'LD', LWB:'ALE', RWB:'ALD', CDM:'VOL', CM:'MC', CAM:'MEI', LM:'ME', RM:'MD', LW:'PE', RW:'PD', ST:'ATA', CF:'SA' };
 export const COLORS = ['#ffc833','#ff6b5a','#5ab0ff','#b98cff','#3ddc84','#ff9a3d','#ff7ac6','#7ae0e0','#d4e157','#a1887f'];

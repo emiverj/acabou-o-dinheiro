@@ -1,6 +1,6 @@
 // Acabou o dinheiro? — interface e sincronização
 import * as E from './engine.js';
-import { PLAYERS } from './players.js';
+import { PLAYERS, setBase, BASE_NAMES } from './db.js';
 import { openChannel, ONLINE, track } from './net.js';
 import { play, isMuted, setMuted, playAcabou } from './sound.js';
 import { resultImage } from './share.js';
@@ -27,7 +27,7 @@ const saveMe = () => { try { localStorage.setItem('acabou-me', JSON.stringify({ 
 let ch = null, state = null, isHost = false, offset = 0, lastSeen = 0, code = null;
 let loopIv = null, hbIv = null, joinIv = null, lobbyCh = null, view = null, lastStampKey = '';
 const rooms = new Map();
-const ui = { asel: null, settings: { budget: '100', max: '8', format: 'liga', speed: 'normal', hide: '0', pub: '1' }, sel: null, draft: null };
+const ui = { asel: null, settings: { base: 'europa', budget: '100', max: '8', format: 'liga', speed: 'normal', hide: '0', pub: '1' }, sel: null, draft: null };
 
 const P = id => E.getP(state, id);
 const myTeam = () => state && state.teams.find(t => t.id === me.id);
@@ -69,7 +69,7 @@ function heartbeat() {
   if (!isHost || !state || !ch) return;
   state.hostNow = Date.now(); ch.send('state', strip(state));
   if (state.settings.pub && lobbyCh && state.phase === 'lobby') {
-    lobbyCh.send('room', { code, name: state.teams[0].name, host: state.teams[0].coach, count: state.teams.length, max: state.settings.max, ts: Date.now() });
+    lobbyCh.send('room', { code, name: state.teams[0].name, host: state.teams[0].coach, count: state.teams.length, max: state.settings.max, base: state.settings.base || 'europa', ts: Date.now() });
   }
 }
 let othersSeenAt = 0, pendingResume = null;
@@ -88,7 +88,7 @@ function onMsg(ev, p) {
     if (state && p.hostNow < state.hostNow) return;
     const prevPhase = state && state.phase;
     if (p.rebind && p.rebind.from === me.id) { me.id = p.rebind.to; try { sessionStorage.setItem('acabou-id', me.id); } catch (e) {} toast('Você voltou para o seu time!'); }
-    state = p; offset = p.hostNow - Date.now(); lastSeen = Date.now();
+    state = p; setBase(p.settings && p.settings.base); offset = p.hostNow - Date.now(); lastSeen = Date.now();
     if (state.teams.some(t => t.id === me.id)) { try { localStorage.setItem('acabou-member-' + code, me.id); } catch (e) {} }
     if (joinIv && (state.teams.some(t => t.id === me.id) || state.phase !== 'lobby')) { clearInterval(joinIv); joinIv = null; }
     if (prevPhase !== state.phase) { ui.sel = null; ui.draft = null; }
@@ -97,7 +97,7 @@ function onMsg(ev, p) {
 }
 function stepDown(p) {
   isHost = false; clearInterval(loopIv); clearInterval(hbIv);
-  state = p; offset = p.hostNow - Date.now(); lastSeen = Date.now();
+  state = p; setBase(p.settings && p.settings.base); offset = p.hostNow - Date.now(); lastSeen = Date.now();
   if (ch) ch.send('action', { type: 'join', id: me.id, name: me.name, team: me.team });
   toast('Outro técnico está conduzindo a sala'); render();
 }
@@ -219,13 +219,14 @@ async function createRoom() {
   if (!readNames()) return;
   code = genCode();
   const s = ui.settings;
-  const settings = { budget: +s.budget, max: +s.max, format: s.format, speed: s.speed, hideOvr: s.hide === '1', pub: s.pub === '1' };
+  const settings = { budget: +s.budget, max: +s.max, format: s.format, speed: s.speed, hideOvr: s.hide === '1', pub: s.pub === '1', base: s.base };
+  setBase(settings.base);
   state = E.newRoomState(code, me, settings); isHost = true;
   try { ch = await openChannel('room-' + code, onMsg); } catch (e) { toast(e.message); state = null; isHost = false; return; }
   try { history.replaceState(null, '', '?sala=' + code); } catch (e) {}
   try { localStorage.setItem('acabou-member-' + code, me.id); } catch (e) {}
   startHostLoops(); publish();
-  track('sala_criada', { sala: code, formato: settings.format, orcamento: settings.budget, publica: settings.pub });
+  track('sala_criada', { sala: code, base: settings.base, formato: settings.format, orcamento: settings.budget, publica: settings.pub });
 }
 async function joinRoom(c, auto) {
   c = String(c || '').trim().toUpperCase();
@@ -244,7 +245,7 @@ async function joinRoom(c, auto) {
     setTimeout(() => {
       const sv = pendingResume; pendingResume = null;
       if (state) { ch.send('action', { type: 'join', id: me.id, name: me.name, team: me.team }); toast('A sala continuou com outro anfitrião'); return; }
-      state = sv; isHost = true; const n = Date.now(); state.seen = {}; state.teams.forEach(t => state.seen[t.id] = n);
+      state = sv; setBase(sv.settings && sv.settings.base); isHost = true; const n = Date.now(); state.seen = {}; state.teams.forEach(t => state.seen[t.id] = n);
       try { localStorage.setItem('acabou-member-' + code, me.id); } catch (e) {} startHostLoops(); publish();
     }, 2500);
     return;
@@ -299,6 +300,7 @@ function renderHome() {
     <div class="panel">
       <h2>Criar sala</h2>
       <div class="lead">Você vira o anfitrião: deixe esta aba aberta até o fim da partida.</div>
+      <div class="field"><label>Base de jogadores</label>${seg('base', [['europa','Europa'],['brasileirao','Brasileirão']])}</div>
       <div class="grid2">
         <div class="field"><label>Orçamento</label>${seg('budget', [['100','R$ 100'],['150','R$ 150'],['200','R$ 200']])}</div>
         <div class="field"><label>Máx. de técnicos</label><select id="f-max">${[2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${+ui.settings.max === n ? 'selected' : ''}>${n} técnicos</option>`).join('')}</select></div>
@@ -322,7 +324,7 @@ function renderHome() {
   </div>
   ${sponsorHTML()}
   <div class="panel" style="margin-top:20px"><h2>Livro de regras</h2><div class="lead">Tudo o que você precisa saber antes do martelo bater.</div><div id="home-rules"></div></div>`;
-  const homeRules = () => { $('#home-rules').innerHTML = rulesHTML({ budget: +ui.settings.budget, speed: ui.settings.speed, format: ui.settings.format }); };
+  const homeRules = () => { $('#home-rules').innerHTML = rulesHTML({ base: ui.settings.base, budget: +ui.settings.budget, speed: ui.settings.speed, format: ui.settings.format }); };
   homeRules(); fillMail();
   app.querySelectorAll('.seg').forEach(sg => sg.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
@@ -338,7 +340,7 @@ function renderHome() {
 function renderRooms() {
   const el = $('#rooms'); if (!el) return;
   const now = Date.now(); const list = [...rooms.values()].filter(r => now - r.ts < 9000);
-  el.innerHTML = list.length ? list.map(r => `<li><span><b>${esc(r.name)}</b><br><small>${esc(r.host)} · ${r.count}/${r.max} técnicos</small></span><button class="ghost" data-code="${esc(r.code)}">Entrar</button></li>`).join('')
+  el.innerHTML = list.length ? list.map(r => `<li><span><b>${esc(r.name)}</b><br><small>${esc(r.host)} · ${esc(BASE_NAMES[r.base] || 'Europa')} · ${r.count}/${r.max} técnicos</small></span><button class="ghost" data-code="${esc(r.code)}">Entrar</button></li>`).join('')
     : '<li class="empty" style="border:0;background:none">Nenhuma sala pública agora. Crie a sua!</li>';
   el.querySelectorAll('button[data-code]').forEach(b => b.onclick = () => joinRoom(b.dataset.code));
 }
@@ -389,7 +391,7 @@ function renderLobby() {
   $('#rulebook').innerHTML = rulesHTML(s);
   $('#lobby-record').innerHTML = recordHTML();
   const nT = state.teams.length, poolEst = Math.ceil(nT * 1.5) + 1 + Math.ceil(nT * 12.5);
-  $('#rules').innerHTML = `<b>Pote desta partida:</b> ${poolEst} jogadores sorteados para ${nT * 11} vagas.<br><b>Regras da sala:</b> orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · leilão ${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
+  $('#rules').innerHTML = `<b>Pote desta partida:</b> ${poolEst} jogadores sorteados para ${nT * 11} vagas.<br><b>Regras da sala:</b> base ${BASE_NAMES[s.base] || 'Europa'} · orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · leilão ${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
   $('#plist').innerHTML = state.teams.map(t => `<div class="prow2">
       <span class="dot" style="background:${t.color};width:14px;height:14px"></span>
       <div><div class="nm">${esc(t.name)}${t.id === me.id ? ' (você)' : ''}</div><small>${esc(t.coach)} · ${esc(t.formation)}${t.bot ? ' · ' + esc(t.pers.n) : ''}${statusTag(t)}</small></div>
@@ -444,14 +446,14 @@ function previewAssign(team) {
 function cardHTML(p, hide) {
   const tier = hide ? 'neutral' : p.o >= 89 ? 'elite' : p.o >= 85 ? 'gold' : 'silver';
   const alt = p.a.length ? p.a.map(a => E.POS_PT[a] || a).join(' · ') : 'só ' + posLabel(p);
-  const hw = p.h ? `${(p.h / 100).toFixed(2).replace('.', ',')} m · ${p.w} kg` : '—';
+  const hw = p.h ? `${(p.h / 100).toFixed(2).replace('.', ',')} m${p.w ? ` · ${p.w} kg` : ''}` : '—';
   return `<div class="pcard ${tier}">
     <div class="pc-head"><div><div class="pc-ovr${hide ? ' q' : ''}">${hide ? '?' : p.o}</div><div class="pc-pos">${posLabel(p)}</div></div><div class="pc-nat">${flagImg(p)}<span>${esc(p.c)}</span></div></div>
     <div class="pc-shirt">${jerseySVG(p.t, p.n)}</div>
     <div class="pc-name">${esc(p.n)}</div>
     <div class="pc-club">${esc(p.t)}</div>
     <div class="pc-traits">${p.o < 85 ? '' : p.x ? `<span class="special">★ ${esc(p.x)}</span>` : (p.k && p.k[0] ? `<span>${esc(p.k[0])}</span>` : '')}</div>
-    <div class="pc-foot"><div><span>Posições</span><b>${posLabel(p)}${p.a.length ? ' · ' + alt : ''}</b></div><div><span>Altura · peso</span><b>${hw}</b></div></div>
+    <div class="pc-foot"><div><span>Posições</span><b>${posLabel(p)}${p.a.length ? ' · ' + alt : ''}</b></div><div><span>${p.w ? 'Altura · peso' : 'Altura'}</span><b>${hw}</b></div></div>
   </div>`;
 }
 let lastCardNo = -1;
@@ -973,7 +975,7 @@ function fillMail() {
   document.querySelectorAll('a.mail').forEach(a => { a.href = 'mailto:' + addr + '?subject=Acabou%20o%20dinheiro%3F'; a.textContent = addr; });
 }
 function showRules() {
-  $('#modal').innerHTML = `<div class="modal" id="mbg"><div class="inner" style="max-width:820px"><div class="top"><h2>Livro de regras</h2><button class="ghost" id="mclose">Fechar</button></div>${rulesHTML(state ? state.settings : { budget: +ui.settings.budget, speed: ui.settings.speed, format: ui.settings.format })}</div></div>`;
+  $('#modal').innerHTML = `<div class="modal" id="mbg"><div class="inner" style="max-width:820px"><div class="top"><h2>Livro de regras</h2><button class="ghost" id="mclose">Fechar</button></div>${rulesHTML(state ? state.settings : { base: ui.settings.base, budget: +ui.settings.budget, speed: ui.settings.speed, format: ui.settings.format })}</div></div>`;
   $('#mclose').onclick = () => $('#modal').innerHTML = '';
   $('#mbg').onclick = e => { if (e.target.id === 'mbg') $('#modal').innerHTML = ''; };
 }
