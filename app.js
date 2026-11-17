@@ -677,7 +677,8 @@ function renderLineup() {
         <div class="panel" id="lu-ctrl"></div>
         <div class="box"><h3>Técnicos</h3><div class="plist" id="lu-teams"></div><div class="ctrl" id="lu-host"></div></div>
       </div>
-    </div>`;
+    </div>
+    ${mt ? `<div class="panel" style="margin-top:18px"><h2>Atributos do seu elenco</h2><div class="lead">Leilão encerrado: agora você vê os seis atributos das suas cartas. RIT = ritmo, FIN = finalização, PAS = passe, DRI = drible, DEF = defesa, FIS = físico.</div><div id="lu-stats"></div></div>` : ''}`;
     if (mt) {
       $('#lu-ctrl').innerHTML = `<h2>Formação</h2><div class="lead">Troque à vontade: os jogadores são reposicionados automaticamente.</div>
         <div class="field">${formationSelect('lu-form', ui.draft.formation)}</div>
@@ -694,6 +695,7 @@ function renderLineup() {
   }
   if (mt) {
     setHTML($('#lu-pitch'), pitchHTML(ui.draft.lineup, ui.draft.formation, { click: true, sel: ui.sel, ovr: true, prices: mt.paid }));
+    if ($('#lu-stats')) setHTML($('#lu-stats'), squadStatsHTML(mt, ui.draft.formation, ui.draft.lineup));
     $('#lu-pitch').onclick = e => {
       const el = e.target.closest('.fslot[data-i]'); if (!el) return;
       const i = +el.dataset.i;
@@ -745,6 +747,27 @@ function evText(e, m) {
 }
 const scoreAt = (m, min) => [m.ev.filter(e => e.t === 'gol' && e.s === 'h' && e.m <= min).length, m.ev.filter(e => e.t === 'gol' && e.s === 'a' && e.m <= min).length];
 /* estilo de jogo, comparação de setores e estatísticas da partida */
+// atributos das cartas do meu elenco (liberados depois do leilão) + força por setor
+function squadStatsHTML(t, formation, lineup) {
+  const slotsF = E.FORMATIONS[formation], ids = lineup && lineup.length === 11 ? lineup : t.squad;
+  const st = E.strength(state, { formation, lineup: ids }); const R = Math.round;
+  const cls = v => v >= 85 ? 'hi' : v >= 75 ? '' : v < 60 ? 'lo' : 'mid';
+  const rows = ids.map((id, i) => {
+    if (id == null) return '';
+    const p = P(id), pos = slotsF[i] ? slotsF[i].pos : p.p;
+    const cells = p.p === 'GK' ? `<td colspan="6" class="gkc">Goleiro: conta o overall</td>` : p.s.map(v => `<td class="${cls(v)}">${v}</td>`).join('');
+    return `<tr><td class="ps">${E.POS_PT[pos] || pos}</td><td class="nm">${esc(p.n)}${p.x ? ` <span title="${esc(p.x)}">${p.xi || '★'}</span>` : ''}</td><td class="ov">${p.o}</td>${cells}</tr>`;
+  }).join('');
+  return `<div class="sq-force"><span>⚔️ Ataque <b>${R(st.a)}</b></span><span>⚙️ Meio <b>${R(st.m)}</b></span><span>🛡️ Defesa <b>${R(st.d)}</b></span></div>
+    <div class="sq-wrap"><table class="sq-stats"><thead><tr><th>Pos</th><th class="nm">Jogador</th><th>OVR</th><th>RIT</th><th>FIN</th><th>PAS</th><th>DRI</th><th>DEF</th><th>FIS</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function showMySquad() {
+  const mt = myTeam(); if (!mt) return;
+  $('#modal').innerHTML = `<div class="modal" id="mbg"><div class="inner" style="max-width:760px"><div class="top"><h2>Atributos do ${esc(mt.name)}</h2><button class="ghost" id="mclose">Fechar</button></div>
+    <div class="lead">RIT = ritmo, FIN = finalização, PAS = passe, DRI = drible, DEF = defesa, FIS = físico. Use para escolher o estilo de jogo.</div>${squadStatsHTML(mt, mt.formation, mt.lineup)}</div></div>`;
+  $('#mclose').onclick = () => $('#modal').innerHTML = '';
+  $('#mbg').onclick = e => { if (e.target.id === 'mbg') $('#modal').innerHTML = ''; };
+}
 function tacticPicker(cur) {
   return `<div class="tactics">${E.TACTIC_NAMES.map(k => { const T = E.TACTICS[k]; return `<button data-tac="${k}" class="${(cur || 'equilibrado') === k ? 'on' : ''}" title="${esc(T.d)}"><span class="ti">${T.i}</span><b>${T.n}</b><small>${esc(T.d)}</small></button>`; }).join('')}</div>`;
 }
@@ -845,11 +868,11 @@ function renderCup(force) {
         <div class="ctrl">${isHost ? `<button class="gold" id="c-watch">▶ Assistir a rodada</button><button class="ghost" id="c-all">Simular o resto do campeonato</button>` : '<span class="lead" style="margin:0">O anfitrião vai começar a rodada.</span>'}</div></div>` : ''}
       ${myTeam() && up.length ? `<div class="panel tac-panel"><div class="lbl" style="margin:0 0 8px">Seu estilo de jogo para esta rodada</div>${tacticPicker(myTeam().tactic)}</div>` : ''}
       ${cup.last ? `<div class="lbl" style="margin:0 0 8px">Resultados · ${esc(cup.last.title)}</div><div class="matches">${cup.last.matches.map(matchCard).join('')}</div>` : ''}
-      <div class="ctrl"><button class="ghost" id="c-sq">Ver elencos</button></div>
+      <div class="ctrl">${myTeam() ? '<button class="ghost" id="c-mine">📋 Atributos do meu time</button>' : ''}<button class="ghost" id="c-sq">Ver elencos</button></div>
     </div>
     <div class="side"><div class="box">${standingsHTML(90)}</div><div class="box" id="c-stats">${statsHTML(undefined, 3)}</div></div>
   </div>`;
-  $('#c-sq').onclick = showSquads; bindTactics(app);
+  $('#c-sq').onclick = showSquads; bindTactics(app); if ($('#c-mine')) $('#c-mine').onclick = showMySquad;
   if (isHost && up.length) {
     app.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => { ui.liveSpeed = +b.dataset.sp; app.querySelectorAll('[data-sp]').forEach(x => x.classList.toggle('on', x === b)); });
     $('#c-watch').onclick = () => { E.startRound(state, Date.now(), ui.liveSpeed || E.LIVE_DEFAULT); publish(); };
