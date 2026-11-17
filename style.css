@@ -679,3 +679,30 @@ table.sq-stats{width:100%;border-collapse:collapse;font-size:13px;min-width:520p
 .sq-stats td.mid{color:var(--muted)}
 .sq-stats td.lo{color:var(--red)}
 .sq-stats td.gkc{font-family:Archivo;color:var(--muted);font-size:12px}
+/* janela de trocas */
+.tr-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:-4px 0 14px}
+.tr-top>span{background:var(--bg2);border:1px solid var(--line2);border-radius:999px;padding:6px 12px;font-size:13px}
+.tr-top b{font-family:'IBM Plex Mono',monospace;color:var(--gold)}
+.tr-top .tr-wait{background:none;border:0;color:var(--muted)}
+.tgrid{display:grid;grid-template-columns:1.2fr .8fr;gap:18px}
+.tgrid>*{min-width:0}
+.tr-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tr-cols .lbl{margin-bottom:6px}
+.tr-p{display:grid;grid-template-columns:30px 34px 1fr;gap:6px;align-items:center;padding:6px 8px;border:1px solid var(--line);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;background:var(--bg2)}
+.tr-p.on{border-color:var(--gold);background:color-mix(in srgb,var(--gold) 15%,var(--bg2))}
+.tr-p .po,.free-row .po{font-family:Anton;color:var(--gold)}
+.tr-p .pp,.free-row .pp{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)}
+.tr-p .pn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}
+.offer{padding:8px 0;border-bottom:1px dashed var(--line);font-size:13px;line-height:1.45}
+.offer .ctrl{margin-top:6px}
+.offer .ctrl button{padding:7px 12px;font-size:13px}
+.free-list{display:flex;flex-direction:column;gap:6px}
+.free-row{display:grid;grid-template-columns:30px 34px 1fr 60px minmax(0,200px) auto;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);font-size:13px}
+.free-row .pn{font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.free-row .pn small{display:block;font-weight:500;color:var(--muted);font-size:11px}
+.free-row .pr{font-family:'IBM Plex Mono',monospace;color:var(--gold);font-weight:700}
+.free-row select{padding:6px 8px;font-size:12px}
+.free-row button{padding:7px 10px;font-size:12px}
+.free-row button:disabled{opacity:.35;cursor:not-allowed}
+@media (max-width:900px){ .tgrid{grid-template-columns:1fr} }
+@media (max-width:640px){ .tr-cols{grid-template-columns:1fr} .free-row{grid-template-columns:28px 32px 1fr 50px;} .free-row select{grid-column:1/4} }
