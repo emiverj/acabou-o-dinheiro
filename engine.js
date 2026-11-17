@@ -574,7 +574,9 @@ export function buildPool(nTeams, bySector) {
     const q = { 1: 4.1, 2: 3.7, 3: 2.7 };
     return strat(gks, Math.ceil(nTeams * 1.5) + 1).concat(...[1, 2, 3].map(l => strat(fields.filter(i => lineOf(PLAYERS[i]) === l), Math.ceil(nTeams * q[l] * 1.3))));
   }
-  return strat(gks, Math.ceil(nTeams * 1.5) + 1).concat(strat(fields, Math.ceil(nTeams * 10 * 1.25)));
+  // leilão sorteado: o pote também vem equilibrado entre defesa, meio e ataque (na proporção das formações)
+  const q = { 1: 4, 2: 3.6, 3: 2.4 };
+  return strat(gks, Math.ceil(nTeams * 1.5) + 1).concat(...[1, 2, 3].map(l => strat(fields.filter(i => lineOf(PLAYERS[i]) === l), Math.ceil(nTeams * q[l] * 1.25))));
 }
 // quantos jogadores daquela linha o time ainda quer, pela formação
 function lineNeed(state, t, line) {
@@ -588,7 +590,7 @@ export function startAuction(state) {
   const pool = buildPool(state.teams.length, state.settings.order === 'setor');
   state.sector = state.settings.order === 'setor' ? 0 : null;
   state.poolSize = pool.length; state.poolIds = pool.slice();
-  state.pool = pool; state.phase = 'auction'; state.lotNo = 0; state.log = []; state.history = []; state.penal = {}; state.base = {};
+  state.pool = pool; state.unsold = []; state.phase = 'auction'; state.lotNo = 0; state.log = []; state.history = []; state.penal = {}; state.base = {};
   state.teams.forEach(t => { t.budget = state.settings.budget; t.squad = []; t.lineup = Array(11).fill(null); t.ready = false; t.paid = {}; });
   if (state.teams.some(t => t.bot)) state.teams.forEach(t => { if (t.bot) t.formation = pick(FORMATION_NAMES); });
   const ovr = PLAYERS.map(p => p.o); state.lo = Math.min(...ovr); state.hi = Math.max(...ovr);
@@ -633,8 +635,22 @@ export function chooseLot(state, now) {
       if (state.sector < 4) addLog(state, `Agora é a vez dos ${SECTORS[state.sector][0].toLowerCase()}`);
     }
   }
+  // leilão sorteado: escolhe primeiro o setor (defesa, meio, ataque) pelo que os times ainda precisam, evitando sequências do mesmo setor
+  if (state.sector == null && cands.length && !isGK(PLAYERS[cands[0]])) {
+    const last = state.lastLines || [];
+    const opts = [1, 2, 3].map(L => {
+      const c = cands.filter(id => lineOf(PLAYERS[id]) === L);
+      const need = state.teams.reduce((n, t) => n + lineNeed(state, t, L), 0);
+      let w = c.length ? need + 0.6 : 0;
+      if (last[0] === L) w *= last[1] === L ? 0.15 : 0.55;
+      return { L, c, w };
+    }).filter(o => o.w > 0);
+    const tot = opts.reduce((n, o) => n + o.w, 0);
+    if (tot > 0) { let r = Math.random() * tot; const o = opts.find(o => (r -= o.w) <= 0) || opts[opts.length - 1]; cands = o.c; }
+  }
   if (!cands.length) return false;
-  const pid = pick(cands); state.pool.splice(state.pool.indexOf(pid), 1); state.lotNo++;
+  const pid = pick(cands);
+  if (!isGK(PLAYERS[pid])) state.lastLines = [lineOf(PLAYERS[pid]), ...(state.lastLines || [])].slice(0, 2); state.pool.splice(state.pool.indexOf(pid), 1); state.lotNo++;
   const sp = SPEEDS[state.settings.speed];
   state.lot = { no: state.lotNo, pid, price: 0, leader: null, endsAt: now + sp.open * 1000, status: 'open', passed: [], openAt: now };
   state._ai = {}; state.teams.forEach(t => { if (botLike(t)) state._ai[t.id] = { max: botMax(state, t, PLAYERS[pid]), next: now + rnd(900, 2600) }; });
@@ -694,7 +710,7 @@ function closeLot(state, winnerId, price, now) {
     lockVersions(state, p);
     placeNew(state, t, lot.pid);
     addLog(state, `${p.n} → ${t.name} por R$ ${price}`);
-  } else addLog(state, `${p.n} ficou sem lance`);
+  } else { addLog(state, `${p.n} ficou sem lance`); (state.unsold = state.unsold || []).push(lot.pid); }
 }
 // chamado a cada ~200ms no anfitrião; devolve true se o estado mudou
 export function tickAuction(state, now) {
@@ -745,9 +761,13 @@ export function skipToEnd(state, now) {
 // Vagas em branco: recebem o pior jogador que sobrou na posição (com −5 de rendimento); sem sobra, entra um Cria da Base
 export function endAuction(state) {
   let bid = 1000; state.penal = state.penal || {};
+  // quem ficou sem lance volta para as sobras (no modo Copa, só se nenhuma outra versão da pessoa foi vendida)
+  const sold = new Set(state.teams.flatMap(t => t.squad).filter(id => PLAYERS[id]).map(id => PLAYERS[id].id).filter(x => x != null));
+  (state.unsold || []).forEach(id => { if (!state.pool.includes(id) && !(PLAYERS[id].id != null && sold.has(PLAYERS[id].id))) state.pool.push(id); });
+  state.unsold = [];
   const takeWorst = filter => {
     const c = state.pool.filter(id => filter(PLAYERS[id])).sort((a, b) => PLAYERS[a].o - PLAYERS[b].o);
-    if (!c.length) return null; state.pool.splice(state.pool.indexOf(c[0]), 1); return c[0];
+    if (!c.length) return null; state.pool.splice(state.pool.indexOf(c[0]), 1); lockVersions(state, PLAYERS[c[0]]); return c[0];
   };
   state.teams.forEach(t => {
     if (!t.lineup || t.lineup.length !== 11) t.lineup = arrange(state, t, t.formation);
@@ -775,10 +795,9 @@ export function endAuction(state) {
   state.lot = null;
   // do fim do leilão até a bola rolar: 5 minutos no total (janela de trocas + tática)
   state.prepEndsAt = Date.now() + PREP_MS; state.lineupEndsAt = state.prepEndsAt;
-  if (state.settings.trades) {
-    state.phase = 'trades'; state.tr = { offers: [], deals: [], count: {}, seq: 0 };
-    state.teams.forEach(t => { t.ready = botLike(t); });
-  } else state.phase = 'lineup';
+  // sempre abre o mercado de sobras; as trocas entre técnicos só com a janela de trocas ligada
+  state.phase = 'trades'; state.tr = { offers: [], deals: [], count: {}, seq: 0, marketOnly: !state.settings.trades };
+  state.teams.forEach(t => { t.ready = botLike(t); });
 }
 export const PREP_MS = 300000, TRADE_LIMIT = 3;
 
@@ -814,6 +833,7 @@ function validOffer(state, o) {
 }
 export function makeOffer(state, from, to, give, get, cash, now) {
   if (state.phase !== 'trades') return 'A janela está fechada';
+  if (state.tr.marketOnly) return 'As trocas estão desligadas nesta sala';
   const o = { id: ++state.tr.seq, from, to, give: (give || []).map(Number), get: (get || []).map(Number), cash: Math.round(+cash || 0), at: now };
   const err = validOffer(state, o); if (err) return err;
   state.tr.offers = state.tr.offers.filter(x => !(x.from === from && x.to === to));

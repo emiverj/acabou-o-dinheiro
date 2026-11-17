@@ -1,4 +1,4 @@
-// Efeitos sonoros sintetizados (sem arquivos): martelo, lance, apito, torcida.
+// Efeitos sonoros: martelo, lance, apito e torcida sintetizados; grito de gol em sons/gol-torcida.
 // Para trocar por um áudio próprio, coloque o arquivo em /sons e use playFile('sons/arquivo.mp3').
 let ctx = null, muted = false, master = null;
 const VOLUME = 0.55; // volume geral dos efeitos
@@ -38,7 +38,9 @@ const S = {
   pop(c) { const t = c.currentTime, o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(600, t); o.frequency.exponentialRampToValueAtTime(1200, t + 0.08);
     g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.1); o.connect(g).connect(master); o.start(t); o.stop(t + 0.12); },
 };
-export function play(name, arg) { if (muted) return; const c = ac(); if (!c || !S[name]) return; try { S[name](c, arg); } catch (e) {} }
+// gol: grito de torcida na arquibancada (arquivo gerado por tools/sons/torcida.py), em volume moderado
+const GOL = ['sons/gol-torcida.m4a', 'sons/gol-torcida.mp3'], GOL_VOL = 0.32;
+export function play(name, arg) { if (muted) return; if (name === 'goal') return playFile(GOL, GOL_VOL); const c = ac(); if (!c || !S[name]) return; try { S[name](c, arg); } catch (e) {} }
 const cache = {};
 // toca um arquivo de áudio; aceita uma lista de formatos e usa o primeiro que o navegador suporta
 export function playFile(urls, vol = 0.5) {
@@ -51,4 +53,6 @@ export function playFile(urls, vol = 0.5) {
   } catch (e) {}
 }
 // "Acabou o dinheiro!" — áudio do jogo
+// deixa o grito de gol carregado para tocar na hora do gol
+try { const p = new Audio(); const u = GOL.find(x => p.canPlayType(x.endsWith('.m4a') ? 'audio/mp4' : 'audio/mpeg')) || GOL[1]; p.preload = 'auto'; p.src = u; } catch (e) {}
 export const playAcabou = () => playFile(['sons/acabou-o-dinheiro.m4a', 'sons/acabou-o-dinheiro.mp3']);

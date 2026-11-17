@@ -344,7 +344,7 @@ function renderHome() {
         <div class="field"><label>Velocidade do leilão</label>${seg('speed', [['normal','Normal',ICON.normal],['rapido','Rápido',ICON.rapido]], 'tiles')}</div>
         <div class="field"><label>Overall no leilão</label>${seg('hide', [['0','Visível',miniCard('88')],['1','Escondido',miniCard('?')]], 'tiles')}</div>
       </div>
-      <div class="field"><label>Janela de trocas</label>${seg('trades', [['0','Desligada',ICON.lock2,'Do leilão direto para a tática'],['1','Ligada',ICON.swap,'Trocas e mercado de sobras depois do leilão']], 'tiles row')}</div>
+      <div class="field"><label>Janela de trocas</label>${seg('trades', [['0','Desligada',ICON.lock2,'Só o mercado de sobras depois do leilão'],['1','Ligada',ICON.swap,'Trocas entre técnicos e mercado de sobras']], 'tiles row')}</div>
       <div class="field"><label>Sala</label>${seg('pub', [['1','Pública',ICON.pub,'Aparece em "Salas abertas"'],['0','Privada',ICON.priv,'Só entra quem tem o código']], 'tiles row')}</div>
       <button class="cta" id="create">Criar sala</button>
     </div>
@@ -688,14 +688,15 @@ requestAnimationFrame(frame);
 /* ---------- janela de trocas ---------- */
 function renderTrades() {
   const mt = myTeam(), tr = state.tr; ui.tr = ui.tr || { give: [], get: [], to: null, cash: 0, dir: 'pay', tab: 'trade' };
-  const others = state.teams.filter(t => !mt || t.id !== mt.id);
+  const others = state.teams.filter(t => !mt || t.id !== mt.id), mkOnly = !!tr.marketOnly;
+  if (mkOnly) ui.tr.tab = 'free';
   if (!ui.tr.to || !teamById(ui.tr.to)) ui.tr.to = others[0] && others[0].id;
   if (view !== 'trades') {
     view = 'trades';
     app.innerHTML = `
-    <div class="ah"><h2>Janela de trocas</h2><div class="prog">A bola rola em <span class="countdown" id="tr-cd"></span></div></div>
+    <div class="ah"><h2>${mkOnly ? 'Mercado de sobras' : 'Janela de trocas'}</h2><div class="prog">A bola rola em <span class="countdown" id="tr-cd"></span></div></div>
     <div class="tr-top" id="tr-top"></div>
-    <div class="tr-tabs seg"><button data-tab="trade">🔁 Trocas</button><button data-tab="free">🛒 Mercado de sobras</button></div>
+    <div class="tr-tabs seg" ${mkOnly ? 'style="display:none"' : ''}><button data-tab="trade">🔁 Trocas</button><button data-tab="free">🛒 Mercado de sobras</button></div>
     <div class="tgrid" id="tr-trade">
       <div class="panel" id="tr-build">
         <div class="field"><label>Negociar com</label><select id="tr-to"></select></div>
@@ -706,7 +707,7 @@ function renderTrades() {
       </div>
       <div class="side"><div id="tr-props"></div><div class="box"><h3>Últimos negócios</h3><ul class="feed small" id="tr-deals"></ul></div></div>
     </div>
-    <div class="panel" id="tr-freep" style="display:none"><div class="lead" style="margin-bottom:10px">Jogadores sem dono, a preço fixo. Escolha quem sai do seu elenco (goleiro por goleiro, linha por linha).</div><div id="tr-free"></div></div>`;
+    <div class="panel" id="tr-freep" style="display:none"><div class="lead" style="margin-bottom:10px">Jogadores que sobraram do leilão (inclusive os que ficaram sem lance), a preço fixo. Escolha quem sai do seu elenco (goleiro por goleiro, linha por linha). Quando terminar, clique em <b>Pronto</b> para ir à tática.</div><div id="tr-free"></div></div>`;
     $('#tr-to').onchange = e => { ui.tr.to = e.target.value; ui.tr.get = []; renderTrades(); };
     const num = v => Math.max(0, Math.floor(+String(v).replace(/\D/g, '') || 0));
     $('#tr-dir').onchange = e => { ui.tr.dir = e.target.value; sumLine(); };
@@ -723,7 +724,7 @@ function renderTrades() {
   const T = teamById(ui.tr.to);
   const left = mt ? E.tradesLeft(state, mt) : 0;
   const waiting = state.teams.filter(t => !E.botLike(t) && !t.ready).length;
-  setHTML($('#tr-top'), mt ? `<span>💰 <b>${fmt(mt.budget)}</b></span><span>🔁 <b>${E.TRADE_LIMIT - left}/${E.TRADE_LIMIT}</b> trocas</span>
+  setHTML($('#tr-top'), mt ? `<span>💰 <b>${fmt(mt.budget)}</b></span>${mkOnly ? '' : `<span>🔁 <b>${E.TRADE_LIMIT - left}/${E.TRADE_LIMIT}</b> trocas</span>`}
     <button class="${mt.ready ? 'ghost' : 'gold'}" id="tr-ready">${mt.ready ? 'Pronto ✓' : 'Pronto'}</button><button class="ghost small" id="tr-attr">📋 Atributos</button>
     ${isHost ? '<button class="ghost small" id="tr-go">Encerrar janela</button>' : ''}${waiting ? `<span class="tr-wait">${waiting} ${waiting > 1 ? 'técnicos' : 'técnico'} decidindo</span>` : ''}` : '');
   setHTML($('#tr-to'), others.map(t => `<option value="${t.id}" ${t.id === ui.tr.to ? 'selected' : ''}>${esc(t.name)}${E.botLike(t) ? ' (bot)' : ''} · ${fmt(t.budget)}</option>`).join(''));
@@ -1065,9 +1066,9 @@ function liveTick(force) {
 /* ---------- FIM ---------- */
 function recordHTML() {
   const rec = state.record; if (!rec || !Object.keys(rec).length) return '';
-  const rows = Object.entries(rec).map(([id, r]) => ({ id, ...r })).sort((a, b) => b.tit - a.tit || b.vice - a.vice || b.v - a.v || (b.gp - b.gc) - (a.gp - a.gc));
+  const rows = Object.entries(rec).map(([id, r]) => ({ id, ...r })).map(r => ({ ...r, pts: r.v * 3 + r.e })).sort((a, b) => b.tit - a.tit || b.vice - a.vice || b.pts - a.pts || (b.gp - b.gc) - (a.gp - a.gc));
   return `<div class="panel" style="margin-top:18px"><h2>Histórico da sala</h2><div class="lead">Somando todas as partidas jogadas nesta sala.</div>
-    <table class="std"><tr><th>#</th><th>Time</th><th>🏆</th><th>Vice</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr>${rows.map((r, i) => `<tr class="${r.id === me.id ? 'me' : ''}"><td>${i + 1}</td><td style="font-family:Archivo;font-weight:700">${esc(r.name)} <small style="color:var(--muted);font-weight:500">${esc(r.coach)}</small></td><td class="pts">${r.tit}</td><td>${r.vice}</td><td>${r.j}</td><td>${r.v}</td><td>${r.e}</td><td>${r.d}</td><td>${r.gp - r.gc}</td></tr>`).join('')}</table></div>`;
+    <table class="std"><tr><th>#</th><th>Time</th><th>🏆</th><th>Vice</th><th>Pts</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr>${rows.map((r, i) => `<tr class="${r.id === me.id ? 'me' : ''}"><td>${i + 1}</td><td style="font-family:Archivo;font-weight:700">${esc(r.name)} <small style="color:var(--muted);font-weight:500">${esc(r.coach)}</small></td><td class="pts">${r.tit}</td><td>${r.vice}</td><td class="pts">${r.pts}</td><td>${r.j}</td><td>${r.v}</td><td>${r.e}</td><td>${r.d}</td><td>${r.gp - r.gc}</td></tr>`).join('')}</table></div>`;
 }
 // ranking final: top 5 de artilheiro, garçom, melhor jogador e paredão
 function rankingsHTML(ps, minJ) {
