@@ -35,6 +35,12 @@ function strip(s) { return JSON.parse(JSON.stringify(s, (k, v) => (k === '_ai' |
 function genCode() { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let c = ''; for (let i = 0; i < 5; i++) c += a[Math.floor(Math.random() * a.length)]; return c; }
 const tn = id => { const t = teamById(id); return t ? `<span style="color:${t.color}">●</span> ${esc(t.name)}` : '<span style="color:var(--muted)">folga</span>'; };
 const posLabel = p => E.POS_PT[p.p] || p.p;
+function statusTag(t) {
+  if (t.bot) return '';
+  if (t.auto) return ' · <span class="st-off">piloto automático</span>';
+  if (t.offSince) { const left = Math.max(0, Math.ceil((t.offSince + 60000 - hostNow()) / 1000)); return ` · <span class="st-off">reconectando ${left}s</span>`; }
+  return '';
+}
 function setHTML(el, html) { if (el && el._h !== html) { el.innerHTML = html; el._h = html; } }
 
 function updateBadge() {
@@ -64,7 +70,9 @@ function onMsg(ev, p) {
     if (!p || p.code !== code) return;
     if (state && p.hostNow < state.hostNow) return;
     const prevPhase = state && state.phase;
+    if (p.rebind && p.rebind.from === me.id) { me.id = p.rebind.to; try { sessionStorage.setItem('acabou-id', me.id); } catch (e) {} toast('Você voltou para o seu time!'); }
     state = p; offset = p.hostNow - Date.now(); lastSeen = Date.now();
+    if (state.teams.some(t => t.id === me.id)) { try { localStorage.setItem('acabou-member-' + code, me.id); } catch (e) {} }
     if (joinIv && (state.teams.some(t => t.id === me.id) || state.phase !== 'lobby')) { clearInterval(joinIv); joinIv = null; }
     if (prevPhase !== state.phase) { ui.sel = null; ui.draft = null; }
     render();
@@ -72,16 +80,34 @@ function onMsg(ev, p) {
 }
 function act(a) { a.id = me.id; if (isHost) handleAction(a); else if (ch) ch.send('action', a); }
 
+const GRACE = 60000, OFFLINE_AFTER = 10000;
 function handleAction(a) {
   if (!state || !a) return;
-  const now = Date.now(), t = teamById(a.id);
+  const now = Date.now();
+  state.seen = state.seen || {};
+  // reconexão de outro aparelho/aba: assume o time antigo se ele estiver desconectado
+  if (a.type === 'join' && a.claim && a.claim !== a.id) {
+    const old = teamById(a.claim);
+    if (old && !old.bot && old.id !== state.hostId && now - (state.seen[old.id] || 0) > 6000) {
+      state.rebind = { from: a.id, to: old.id, at: now };
+      state.seen[old.id] = now; old.offSince = null; E.setAuto(old, false);
+      publish(); return;
+    }
+  }
+  if (teamById(a.id)) {
+    state.seen[a.id] = now;
+    const tt = teamById(a.id);
+    if (tt.offSince || tt.auto) { tt.offSince = null; if (tt.auto) { E.setAuto(tt, false); if (state.phase === 'lineup') tt.ready = false; } publish(); }
+  }
+  const t = teamById(a.id);
   switch (a.type) {
+    case 'ping': break;
     case 'join': {
       if (!t) {
         if (state.phase !== 'lobby' || state.teams.length >= state.settings.max) { heartbeat(); return; }
         const used = state.teams.map(x => x.color); const idx = E.COLORS.findIndex(c => !used.includes(c));
         const nt = E.mkTeam(a.id, String(a.name || 'Técnico').slice(0, 18), String(a.team || '').slice(0, 22), false, Math.max(0, idx));
-        state.teams.push(nt);
+        state.teams.push(nt); state.seen[a.id] = now;
       } else if (state.phase === 'lobby') { t.coach = String(a.name || t.coach).slice(0, 18); if (a.team) t.name = String(a.team).slice(0, 22); }
       publish(); break;
     }
@@ -94,12 +120,29 @@ function handleAction(a) {
     case 'ready': if (t && state.phase === 'lineup') { t.ready = !!a.ready; publish(); } break;
   }
 }
+function presenceCheck(now) {
+  let changed = false; state.seen = state.seen || {};
+  for (const t of state.teams.slice()) {
+    if (t.bot || t.id === state.hostId) continue;
+    if (!state.seen[t.id]) state.seen[t.id] = now;
+    const last = state.seen[t.id];
+    if (now - last > OFFLINE_AFTER) {
+      if (!t.offSince) { t.offSince = last; changed = true; }
+      if (now - t.offSince > GRACE) {
+        if (state.phase === 'lobby') { state.teams = state.teams.filter(x => x !== t); changed = true; }
+        else if (!t.auto) { E.setAuto(t, true); if (state.phase === 'lineup') t.ready = true; if (state.phase === 'auction') E.addLog(state, `${t.name} entrou no piloto automático`); changed = true; }
+      }
+    }
+  }
+  return changed;
+}
 function hostLoop() {
   if (!state) return;
-  const now = Date.now(); let changed = false;
+  const now = Date.now(); let changed = presenceCheck(now);
+  try { localStorage.setItem('acabou-alive-' + code, String(now)); } catch (e) {}
   if (state.phase === 'auction') changed = E.tickAuction(state, now);
   else if (state.phase === 'lineup') {
-    const humans = state.teams.filter(t => !t.bot);
+    const humans = state.teams.filter(t => !E.botLike(t));
     if (humans.every(t => t.ready) || now > state.lineupEndsAt) { E.startCup(state); changed = true; }
   }
   if (changed) publish();
@@ -130,6 +173,7 @@ async function createRoom() {
   state = E.newRoomState(code, me, settings); isHost = true;
   try { ch = await openChannel('room-' + code, onMsg); } catch (e) { toast(e.message); state = null; isHost = false; return; }
   try { history.replaceState(null, '', '?sala=' + code); } catch (e) {}
+  try { localStorage.setItem('acabou-member-' + code, me.id); } catch (e) {}
   startHostLoops(); publish();
 }
 async function joinRoom(c, auto) {
@@ -140,10 +184,15 @@ async function joinRoom(c, auto) {
   let saved = null; try { saved = JSON.parse(localStorage.getItem('acabou-host-' + code) || 'null'); } catch (e) { saved = null; }
   try { ch = await openChannel('room-' + code, onMsg); } catch (e) { toast(e.message); code = null; return; }
   try { history.replaceState(null, '', '?sala=' + code); } catch (e) {}
-  if (saved && saved.hostId === me.id) { state = saved; isHost = true; startHostLoops(); publish(); return; }
+  let member = null, alive = 0;
+  try { member = localStorage.getItem('acabou-member-' + code); alive = +(localStorage.getItem('acabou-alive-' + code) || 0); } catch (e) {}
+  // anfitrião reabrindo a sala em outra aba (se nenhuma outra aba estiver rodando a sala)
+  if (saved && member && saved.hostId === member && saved.hostId !== me.id && Date.now() - alive > 5000) { me.id = member; try { sessionStorage.setItem('acabou-id', me.id); } catch (e) {} }
+  if (saved && saved.hostId === me.id) { state = saved; isHost = true; const n = Date.now(); state.seen = {}; state.teams.forEach(t => state.seen[t.id] = n); try { localStorage.setItem('acabou-member-' + code, me.id); } catch (e) {} startHostLoops(); publish(); return; }
   isHost = false; state = null; renderConnecting();
   if (!me.name) { me.name = 'Técnico ' + me.id.slice(0, 3); }
-  const send = () => ch.send('action', { type: 'join', id: me.id, name: me.name, team: me.team });
+  const claim = member && member !== me.id ? member : null;
+  const send = () => ch.send('action', { type: 'join', id: me.id, name: me.name, team: me.team, claim });
   send(); clearInterval(joinIv); joinIv = setInterval(send, 1500);
   setTimeout(() => { if (!state && code === c) { clearInterval(joinIv); joinIv = null; renderNotFound(); } }, 12000);
 }
@@ -229,6 +278,9 @@ function renderRooms() {
   el.querySelectorAll('button[data-code]').forEach(b => b.onclick = () => joinRoom(b.dataset.code));
 }
 setInterval(() => { if (view === 'home') renderRooms(); updateBadge(); }, 3000);
+// cliente avisa o anfitrião que continua conectado
+setInterval(() => { if (ch && state && !isHost && code) ch.send('action', { type: 'ping', id: me.id }); }, 4000);
+window.addEventListener('online', () => { if (ch && code && !isHost) ch.send('action', { type: 'ping', id: me.id }); });
 function renderConnecting() { view = 'connecting'; app.innerHTML = `<div class="panel" style="margin-top:30px;text-align:center"><h2>Entrando na sala ${esc(code)}…</h2><div class="lead">Esperando o anfitrião responder.</div></div>`; }
 function renderNotFound() { view = 'nf'; app.innerHTML = `<div class="panel" style="margin-top:30px;text-align:center"><h2>Sala não encontrada</h2><div class="lead">Confira o código, ou peça para o anfitrião deixar a aba da sala aberta.</div><button class="gold" id="back">Voltar</button></div>`; $('#back').onclick = () => location.href = location.pathname; }
 
@@ -267,10 +319,11 @@ function renderLobby() {
   }
   const s = state.settings;
   $('#rulebook').innerHTML = rulesHTML(s);
-  $('#rules').innerHTML = `<b>Regras da sala:</b> orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · leilão ${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
+  const nT = state.teams.length, poolEst = Math.ceil(nT * 1.5) + 1 + Math.ceil(nT * 12.5);
+  $('#rules').innerHTML = `<b>Pote desta partida:</b> ${poolEst} jogadores sorteados para ${nT * 11} vagas.<br><b>Regras da sala:</b> orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · leilão ${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
   $('#plist').innerHTML = state.teams.map(t => `<div class="prow2">
       <span class="dot" style="background:${t.color};width:14px;height:14px"></span>
-      <div><div class="nm">${esc(t.name)}${t.id === me.id ? ' (você)' : ''}</div><small>${esc(t.coach)} · ${esc(t.formation)}${t.bot ? ' · ' + esc(t.pers.n) : ''}</small></div>
+      <div><div class="nm">${esc(t.name)}${t.id === me.id ? ' (você)' : ''}</div><small>${esc(t.coach)} · ${esc(t.formation)}${t.bot ? ' · ' + esc(t.pers.n) : ''}${statusTag(t)}</small></div>
       <span>${t.id === state.hostId ? '<span class="tag host">anfitrião</span>' : t.bot ? '<span class="tag bot">bot</span>' : '<span class="tag ok">pronto</span>'}</span>
       <span>${isHost && t.id !== state.hostId ? `<button class="x" data-kick="${esc(t.id)}" title="Remover">×</button>` : ''}</span>
     </div>`).join('');
@@ -324,14 +377,16 @@ function cardHTML(p, hide) {
   const alt = p.a.length ? p.a.map(a => E.POS_PT[a] || a).join(' · ') : 'só ' + posLabel(p);
   const hw = p.h ? `${(p.h / 100).toFixed(2).replace('.', ',')} m · ${p.w} kg` : '—';
   return `<div class="pcard ${tier}">
-    <div class="pc-head"><div><div class="pc-ovr">${hide ? '??' : p.o}</div><div class="pc-pos">${posLabel(p)}</div></div><div class="pc-nat">${esc(p.c)}</div></div>
+    <div class="pc-head"><div><div class="pc-ovr">${hide ? '??' : p.o}</div><div class="pc-pos">${posLabel(p)}</div></div><div class="pc-nat">${flagImg(p)}<span>${esc(p.c)}</span></div></div>
     <div class="pc-shirt">${jerseySVG(p.t, p.n)}</div>
     <div class="pc-name">${esc(p.n)}</div>
     <div class="pc-club">${esc(p.t)}</div>
+    <div class="pc-traits">${(p.k || []).map(k => `<span>${esc(k)}</span>`).join('')}</div>
     <div class="pc-foot"><div><span>Posições</span><b>${posLabel(p)}${p.a.length ? ' · ' + alt : ''}</b></div><div><span>Altura · peso</span><b>${hw}</b></div></div>
   </div>`;
 }
 let lastCardNo = -1;
+const flagImg = p => p.f ? `<img class="flag" src="flags/${p.f}.svg" alt="" width="28" height="21">` : '';
 function renderAuction() {
   if (view !== 'auction') {
     view = 'auction'; lastStampKey = ''; lastCardNo = -1; ui.asel = null;
@@ -392,7 +447,7 @@ function renderAuction() {
     fillMail();
   }
   const lot = state.lot, mt = myTeam(), sold = state.teams.reduce((a, t) => a + t.squad.length, 0);
-  $('#a-prog').textContent = `Lote ${state.lotNo} · ${sold}/${state.teams.length * 11} vagas preenchidas`;
+  $('#a-prog').textContent = `Lote ${state.lotNo} · ${sold}/${state.teams.length * 11} vagas preenchidas · ${Math.max(0, (state.poolSize || 0) - (state.history || []).length - (lot && lot.status === 'open' ? 1 : 0))} de ${state.poolSize || '?'} jogadores ainda no pote`;
   if (lot) {
     const p = PLAYERS[lot.pid];
     $('#l-no').textContent = 'LOTE ' + lot.no;
@@ -428,7 +483,7 @@ function renderAuction() {
   $('#tlist').innerHTML = state.teams.map(t => `<div class="trow ${lot && lot.status === 'open' && lot.leader === t.id ? 'lead' : ''} ${t.id === me.id ? 'me' : ''}">
       <div class="tn"><i class="dot" style="background:${t.color}"></i><span>${esc(t.name)}</span></div>
       <div class="tb">${fmt(t.budget)}</div>
-      <div class="tsub">${t.bot ? esc(t.coach) + ' · bot' : esc(t.coach)} · ${esc(t.formation)}</div>
+      <div class="tsub">${t.bot ? esc(t.coach) + ' · bot' : esc(t.coach)} · ${esc(t.formation)}${statusTag(t)}</div>
       <div class="tcount">${t.squad.length}/11 ${E.hasGK(state, t) ? '🧤' : ''}</div></div>`).join('');
   if (mt) {
     $('#my-title').textContent = `${mt.name} · ${mt.squad.length}/11 · gasto ${fmt(state.settings.budget - mt.budget)}`;
