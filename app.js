@@ -450,7 +450,7 @@ function cardHTML(p, hide) {
     <div class="pc-shirt">${jerseySVG(p.t, p.n)}</div>
     <div class="pc-name">${esc(p.n)}</div>
     <div class="pc-club">${esc(p.t)}</div>
-    <div class="pc-traits">${p.x ? `<span class="special">★ ${esc(p.x)}</span>` : (p.k && p.k[0] ? `<span>${esc(p.k[0])}</span>` : '')}</div>
+    <div class="pc-traits">${p.o < 85 ? '' : p.x ? `<span class="special">★ ${esc(p.x)}</span>` : (p.k && p.k[0] ? `<span>${esc(p.k[0])}</span>` : '')}</div>
     <div class="pc-foot"><div><span>Posições</span><b>${posLabel(p)}${p.a.length ? ' · ' + alt : ''}</b></div><div><span>Altura · peso</span><b>${hw}</b></div></div>
   </div>`;
 }
@@ -480,7 +480,7 @@ function renderAuction() {
                 <button class="bid" data-inc="10">+10<small></small></button>
                 <button class="bid max" id="l-max">Máx.<small></small></button>
               </div>
-              <div class="custom"><input type="number" id="l-custom" min="1" placeholder="Outro valor (R$)"><button class="ghost" id="l-send">Dar lance</button><button class="pass" id="l-pass">Passar</button></div>
+              <div class="custom"><input type="number" id="l-custom" min="1" placeholder="Valor em R$"><button class="ghost" id="l-send">Dar lance</button><button class="pass" id="l-pass">Passar</button></div>
             </div>
             <div class="hint" id="l-hint"></div>
             ${reactBar()}
@@ -551,7 +551,7 @@ function renderAuction() {
     if (!mt) h = 'Você está assistindo este leilão.';
     else if (E.slots(mt) === 0) h = 'Seu elenco está completo. Os outros seguem disputando.';
     else if (!E.needFor(state, mt, p)) h = E.isGK(p) ? 'Você já tem goleiro: este lote roda sem você.' : 'Você já tem 10 jogadores de linha: só falta o goleiro.';
-    else h = `Saldo: <b>${fmt(mt.budget)}</b> · Vagas: <b>${E.slots(mt)}</b> (${E.hasGK(state, mt) ? 'goleiro ✓' : 'falta goleiro'}) · Teto neste lote: <b>${fmt(lim)}</b> · Seu lance mínimo: <b>${fmt(mn)}</b><br>Atalhos: <b>1</b> +1 · <b>2</b> +5 · <b>3</b> +10 · <b>4</b> máx. · <b>P</b> passar`;
+    else h = `Saldo: <b>${fmt(mt.budget)}</b> · Vagas: <b>${E.slots(mt)}</b> (${E.hasGK(state, mt) ? 'goleiro ✓' : 'falta goleiro'}) · Teto neste lote: <b>${fmt(lim)}</b> · Seu lance mínimo: <b>${fmt(mn)}</b>`;
     $('#l-hint').innerHTML = h;
   }
   $('#ffbar').classList.toggle('on', isHost && state.teams.every(t => t.bot || E.slots(t) === 0));
