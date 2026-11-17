@@ -2,10 +2,12 @@
 // Regra: todo modo/região novo precisa de um ícone próprio em icons/<id>.svg e de um tema (data-mode no <body>).
 import { PLAYERS as EUROPA } from './players.js';
 import { PLAYERS_BR } from './players_br.js';
+import { PLAYERS_COPA } from './players_copa.js';
 
 export const MODES = {
   europa: { name: 'Europa', icon: 'icons/europa.svg', list: EUROPA, desc: 'Cinco grandes ligas, Champions e Liga Europa' },
   brasileirao: { name: 'Brasileirão', icon: 'icons/brasileirao.svg', list: PLAYERS_BR, desc: 'Os 20 clubes da Série A 2026' },
+  copa: { name: 'Copa do Mundo', icon: 'icons/copa.svg', list: PLAYERS_COPA, desc: 'Versões de jogadores de todas as Copas, de 1930 a 2026', versions: true },
 };
 export const BASES = Object.fromEntries(Object.entries(MODES).map(([k, m]) => [k, m.list]));
 export const BASE_NAMES = Object.fromEntries(Object.entries(MODES).map(([k, m]) => [k, m.name]));
