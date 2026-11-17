@@ -1,6 +1,6 @@
 // Acabou o dinheiro? — interface e sincronização
 import * as E from './engine.js';
-import { PLAYERS, setBase, BASE_NAMES } from './db.js';
+import { PLAYERS, setBase, BASE_NAMES, MODES, ovrRange } from './db.js';
 import { openChannel, ONLINE, track } from './net.js';
 import { play, isMuted, setMuted, playAcabou } from './sound.js';
 import { resultImage } from './share.js';
@@ -265,6 +265,7 @@ function leaveRoom() {
 /* ---------- render principal ---------- */
 function render() {
   updateBadge();
+  setBase(state ? state.settings && state.settings.base : ui.settings.base);
   if (!state) return renderHome();
   // elenco fechado (vale também quando a última compra encerra o leilão)
   const mt0 = myTeam();
@@ -276,9 +277,22 @@ function render() {
   const fn = { lobby: renderLobby, auction: renderAuction, lineup: renderLineup, cup: renderCup, end: renderEnd }[state.phase];
   fn && fn();
 }
-function seg(key, opts) {
-  return `<div class="seg" data-k="${key}">${opts.map(([v, l]) => `<button data-v="${v}" class="${ui.settings[key] === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+function seg(key, opts, cls) {
+  // opts: [valor, rótulo, ícone (html), legenda]
+  return `<div class="seg ${cls || ''}" data-k="${key}">${opts.map(([v, l, ic, sub]) => `<button data-v="${v}" class="${ui.settings[key] === v ? 'on' : ''}">${ic ? `<span class="ic">${ic}</span>` : ''}${ic || sub ? `<span class="tx"><b>${l}</b>${sub ? `<small>${sub}</small>` : ''}</span>` : l}</button>`).join('')}</div>`;
 }
+const SVG = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
+const ICON = {
+  liga: SVG('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16"/>'),
+  mata: SVG('<path d="M3 5h5v4H3zM3 15h5v4H3zM8 7h3v10H8M11 12h4M15 10h6v4h-6z"/>'),
+  grupos: SVG('<rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="13" width="7" height="7" rx="1.5"/><path d="M10 7.5h3v9h-3M13 12h3"/><path d="M16 9h5v6h-5z"/>'),
+  normal: SVG('<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/>'),
+  rapido: SVG('<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>'),
+  pub: SVG('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/>'),
+  priv: SVG('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'),
+  book: SVG('<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M8 7h7M8 11h5"/>'),
+};
+const miniCard = t => `<span class="mini-card">${t}</span>`;
 function renderHome() {
   view = 'home';
   app.innerHTML = `
@@ -300,17 +314,17 @@ function renderHome() {
     <div class="panel">
       <h2>Criar sala</h2>
       <div class="lead">Você vira o anfitrião: deixe esta aba aberta até o fim da partida.</div>
-      <div class="field"><label>Base de jogadores</label>${seg('base', [['europa','Europa'],['brasileirao','Brasileirão']])}</div>
+      <div class="field"><label>Modo</label>${seg('base', Object.entries(MODES).map(([k, m]) => { const [lo, hi] = ovrRange(k); return [k, m.name, `<img src="${m.icon}" alt="" width="46" height="46">`, `${m.list.length} jogadores · OVR ${lo}–${hi}`]; }), 'tiles modes')}</div>
       <div class="grid2">
         <div class="field"><label>Orçamento</label>${seg('budget', [['100','R$ 100'],['150','R$ 150'],['200','R$ 200']])}</div>
         <div class="field"><label>Máx. de técnicos</label><select id="f-max">${[2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${+ui.settings.max === n ? 'selected' : ''}>${n} técnicos</option>`).join('')}</select></div>
       </div>
-      <div class="field"><label>Campeonato</label>${seg('format', [['liga','Pontos corridos'],['mata','Mata-mata'],['grupos','Grupos + mata-mata']])}</div>
+      <div class="field"><label>Campeonato</label>${seg('format', [['liga','Pontos corridos',ICON.liga],['mata','Mata-mata',ICON.mata],['grupos','Grupos + mata',ICON.grupos]], 'tiles')}</div>
       <div class="grid2">
-        <div class="field"><label>Velocidade do leilão</label>${seg('speed', [['normal','Normal'],['rapido','Rápido']])}</div>
-        <div class="field"><label>Overall no leilão</label>${seg('hide', [['0','Visível'],['1','Escondido']])}</div>
+        <div class="field"><label>Velocidade do leilão</label>${seg('speed', [['normal','Normal',ICON.normal],['rapido','Rápido',ICON.rapido]], 'tiles')}</div>
+        <div class="field"><label>Overall no leilão</label>${seg('hide', [['0','Visível',miniCard('88')],['1','Escondido',miniCard('?')]], 'tiles')}</div>
       </div>
-      <div class="field"><label>Sala</label>${seg('pub', [['1','Pública'],['0','Privada (só com código)']])}</div>
+      <div class="field"><label>Sala</label>${seg('pub', [['1','Pública',ICON.pub,'Aparece em "Salas abertas"'],['0','Privada',ICON.priv,'Só entra quem tem o código']], 'tiles row')}</div>
       <button class="cta" id="create">Criar sala</button>
     </div>
     <div class="panel">
@@ -322,14 +336,14 @@ function renderHome() {
       <ul class="rooms" id="rooms"></ul>
     </div>
   </div>
-  ${sponsorHTML()}
-  <div class="panel" style="margin-top:20px"><h2>Livro de regras</h2><div class="lead">Tudo o que você precisa saber antes do martelo bater.</div><div id="home-rules"></div></div>`;
-  const homeRules = () => { $('#home-rules').innerHTML = rulesHTML({ base: ui.settings.base, budget: +ui.settings.budget, speed: ui.settings.speed, format: ui.settings.format }); };
-  homeRules(); fillMail();
+  <button class="rules-link" id="home-rules">${ICON.book}<span><b>Livro de regras</b><small>Tudo o que você precisa saber antes do martelo bater</small></span><em>Abrir</em></button>
+  ${sponsorHTML()}`;
+  $('#home-rules').onclick = showRules;
+  fillMail();
   app.querySelectorAll('.seg').forEach(sg => sg.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     ui.settings[sg.dataset.k] = b.dataset.v; sg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
-    homeRules();
+    if (sg.dataset.k === 'base') setBase(b.dataset.v);
   }));
   $('#f-max').onchange = e => ui.settings.max = e.target.value;
   $('#create').onclick = createRoom;
@@ -452,7 +466,7 @@ function cardHTML(p, hide) {
     <div class="pc-shirt">${jerseySVG(p.t, p.n)}</div>
     <div class="pc-name">${esc(p.n)}</div>
     <div class="pc-club">${esc(p.t)}</div>
-    <div class="pc-traits">${p.o < 85 ? '' : p.x ? `<span class="special">★ ${esc(p.x)}</span>` : (p.k && p.k[0] ? `<span>${esc(p.k[0])}</span>` : '')}</div>
+    <div class="pc-traits">${p.x ? `<span class="special" title="${p.l ? 'Lenda: especial dado a um jogador histórico' : 'Especial dos 88+'}">${p.l ? '👑' : '★'} ${esc(p.x)}</span>` : p.o < 85 ? '' : (p.k && p.k[0] ? `<span>${esc(p.k[0])}</span>` : '')}</div>
     <div class="pc-foot"><div><span>Posições</span><b>${posLabel(p)}${p.a.length ? ' · ' + alt : ''}</b></div><div><span>${p.w ? 'Altura · peso' : 'Altura'}</span><b>${hw}</b></div></div>
   </div>`;
 }
@@ -751,21 +765,27 @@ function standingsHTML(min) {
     const fin = m.played && (!isLive || min >= 90);
     return `<div class="bm"><span class="${fin && m.w === m.h ? 'w' : ''}">${m.h ? esc(teamById(m.h).name) : 'folga'}</span><span>${m.played && !m.bye ? sc[0] + '×' + sc[1] + (fin && m.pens ? ' (p)' : '') : '·'}</span><span class="${fin && m.w === m.a ? 'w' : ''}">${m.a ? esc(teamById(m.a).name) : 'folga'}</span></div>`; }).join('')}</div>`).join('')}</div>`;
 }
-const STAT_TABS = [['g', 'Artilharia'], ['a', 'Assistências'], ['nota', 'Notas'], ['gk', 'Goleiros'], ['esp', 'Bola parada'], ['cart', 'Cartões']];
-function statsHTML(min) {
-  const tab = ui.stab || 'g', all = E.playerStats(state, min);
-  const row = (r, v) => `<li><span>${pn(r.id)} <small style="color:var(--muted)">· ${esc((teamById(r.team) || {}).name || '')}</small></span><span>${v}</span></li>`;
-  let list = [];
-  if (tab === 'g') list = all.filter(r => r.g).sort((a, b) => b.g - a.g || b.a - a.a).map(r => row(r, r.g));
-  if (tab === 'a') list = all.filter(r => r.a).sort((a, b) => b.a - a.a || b.g - a.g).map(r => row(r, r.a));
-  if (tab === 'nota') list = all.filter(r => r.j).sort((a, b) => b.nt / b.j - a.nt / a.j).map(r => row(r, (r.nt / r.j).toFixed(2) + (r.mvp ? ' ⭐' + r.mvp : '')));
-  if (tab === 'gk') list = all.filter(r => P(r.id).p === 'GK' && (r.cs || r.sv)).sort((a, b) => b.cs - a.cs || b.sv - a.sv).map(r => row(r, `${r.cs} SG · ${r.sv} def.${r.ps ? ' · ' + r.ps + ' pên.' : ''}`));
-  if (tab === 'esp') list = all.filter(r => r.gf || r.gp || r.gh).sort((a, b) => (b.gf + b.gp + b.gh) - (a.gf + a.gp + a.gh)).map(r => row(r, [r.gf ? r.gf + ' falta' : '', r.gp ? r.gp + ' pên.' : '', r.gh ? r.gh + ' cab.' : ''].filter(Boolean).join(' · ')));
-  if (tab === 'cart') list = all.filter(r => r.ya || r.rc).sort((a, b) => (b.rc * 3 + b.ya) - (a.rc * 3 + a.ya)).map(r => row(r, `${r.ya ? '🟨' + r.ya : ''} ${r.rc ? '🟥' + r.rc : ''}`));
-  return `<div class="stabs">${STAT_TABS.map(([k, l]) => `<button data-st="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-    <ul class="scorerlist">${list.slice(0, 8).join('') || '<li><span style="color:var(--muted)">Nada por aqui ainda</span><span></span></li>'}</ul>`;
+// estatísticas da competição, cada uma num card com ícone
+const STAT_CARDS = [
+  ['g', 'Artilharia', '⚽'], ['a', 'Assistências', '🎯'], ['nota', 'Melhores notas', '⭐'],
+  ['gk', 'Goleiros', '🧤'], ['esp', 'Bola parada', '🚩'], ['cart', 'Cartões', '🟨'],
+];
+function statLists(all) {
+  return {
+    g: all.filter(r => r.g).sort((a, b) => b.g - a.g || b.a - a.a).map(r => [r, r.g]),
+    a: all.filter(r => r.a).sort((a, b) => b.a - a.a || b.g - a.g).map(r => [r, r.a]),
+    nota: all.filter(r => r.j).sort((a, b) => b.nt / b.j - a.nt / a.j).map(r => [r, (r.nt / r.j).toFixed(2) + (r.mvp ? ' ⭐' + r.mvp : '')]),
+    gk: all.filter(r => P(r.id).p === 'GK' && (r.cs || r.sv)).sort((a, b) => b.cs - a.cs || b.sv - a.sv).map(r => [r, `${r.cs} SG · ${r.sv} def.${r.ps ? ' · ' + r.ps + ' pên.' : ''}`]),
+    esp: all.filter(r => r.gf || r.gp || r.gh).sort((a, b) => (b.gf + b.gp + b.gh) - (a.gf + a.gp + a.gh)).map(r => [r, [r.gf ? r.gf + ' falta' : '', r.gp ? r.gp + ' pên.' : '', r.gh ? r.gh + ' cab.' : ''].filter(Boolean).join(' · ')]),
+    cart: all.filter(r => r.ya || r.rc).sort((a, b) => (b.rc * 3 + b.ya) - (a.rc * 3 + a.ya)).map(r => [r, `${r.ya ? '🟨' + r.ya : ''} ${r.rc ? '🟥' + r.rc : ''}`]),
+  };
 }
-function bindStatTabs(root) { root.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { ui.stab = b.dataset.st; renderCup(true); }); }
+function statsHTML(min, n = 3) {
+  const L = statLists(E.playerStats(state, min));
+  const row = ([r, v]) => `<li><span class="who">${pn(r.id)}<small>${esc((teamById(r.team) || {}).name || '')}</small></span><span class="v">${v}</span></li>`;
+  return `<h3>Estatísticas</h3><div class="stat-cards">${STAT_CARDS.map(([k, l, ic]) => `<div class="stat-card"><div class="sc-h"><span class="sc-ic">${ic}</span><b>${l}</b></div>
+    <ul>${L[k].slice(0, n).map(row).join('') || '<li class="none">Nada ainda</li>'}</ul></div>`).join('')}</div>`;
+}
 
 let viewer = null, liveKey = '', lastNotif = -1, feed = [];
 function renderCup(force) {
@@ -777,20 +797,23 @@ function renderCup(force) {
   <div class="ah"><h2>${cup.last ? esc(cup.last.title) : 'Campeonato'}</h2><div class="prog">${{ liga:'Pontos corridos', mata:'Mata-mata', grupos:'Grupos + mata-mata' }[cup.format]} · próximo: ${esc(E.nextTitle(state))}</div></div>
   <div class="cgrid">
     <div>
-      ${up.length ? `<div class="panel" style="padding:16px;margin-bottom:14px"><div class="lbl" style="margin:0 0 8px">Próximos jogos · ${esc(E.nextTitle(state))}</div><div class="matches">${up.map(matchCard).join('')}</div>
-        <div class="ctrl">${isHost ? `<span class="lbl" style="align-self:center">Velocidade</span><div class="seg speeds">${E.SPEEDS_LIVE.map(s => `<button data-sp="${s}" class="${(ui.liveSpeed || 4) === s ? 'on' : ''}">${s}x</button>`).join('')}</div>
-          <button class="gold" id="c-watch">▶ Assistir a rodada</button><button class="ghost" id="c-all">Simular o resto do campeonato</button>` : '<span class="lead" style="margin:0">O anfitrião vai começar a rodada.</span>'}</div></div>` : ''}
+      ${up.length ? `<div class="panel" style="padding:16px;margin-bottom:14px">${isHost ? speedCtrl(ui.liveSpeed || E.LIVE_DEFAULT) : ''}<div class="lbl" style="margin:0 0 8px">Próximos jogos · ${esc(E.nextTitle(state))}</div><div class="matches">${up.map(matchCard).join('')}</div>
+        <div class="ctrl">${isHost ? `<button class="gold" id="c-watch">▶ Assistir a rodada</button><button class="ghost" id="c-all">Simular o resto do campeonato</button>` : '<span class="lead" style="margin:0">O anfitrião vai começar a rodada.</span>'}</div></div>` : ''}
       ${cup.last ? `<div class="lbl" style="margin:0 0 8px">Resultados · ${esc(cup.last.title)}</div><div class="matches">${cup.last.matches.map(matchCard).join('')}</div>` : ''}
       <div class="ctrl"><button class="ghost" id="c-sq">Ver elencos</button></div>
     </div>
-    <div class="side"><div class="box">${standingsHTML(90)}</div><div class="box" id="c-stats">${statsHTML()}</div></div>
+    <div class="side"><div class="box">${standingsHTML(90)}</div><div class="box" id="c-stats">${statsHTML(undefined, 3)}</div></div>
   </div>`;
-  $('#c-sq').onclick = showSquads; bindStatTabs($('#c-stats'));
+  $('#c-sq').onclick = showSquads;
   if (isHost && up.length) {
     app.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => { ui.liveSpeed = +b.dataset.sp; app.querySelectorAll('[data-sp]').forEach(x => x.classList.toggle('on', x === b)); });
-    $('#c-watch').onclick = () => { E.startRound(state, Date.now(), ui.liveSpeed || 4); publish(); };
+    $('#c-watch').onclick = () => { E.startRound(state, Date.now(), ui.liveSpeed || E.LIVE_DEFAULT); publish(); };
     $('#c-all').onclick = () => { let g = 0; while (!state.cup.done && g++ < 300) { if (state.cup.live) E.commitRound(state); else E.advanceCup(state); } publish(); };
   }
+}
+// controle de ritmo da rodada ao vivo (só o anfitrião)
+function speedCtrl(cur) {
+  return `<div class="speedbar"><span class="lbl">Ritmo</span><div class="seg speeds">${E.SPEEDS_LIVE.map(s => `<button data-sp="${s}" class="${cur === s ? 'on' : ''}">${E.LIVE_LABEL[s]}${s === E.LIVE_DEFAULT ? ' <small>padrão</small>' : ''}</button>`).join('')}</div></div>`;
 }
 function liveMatches() { return E.currentRound(state).filter(m => m.h && m.a && m.ev); }
 function renderLive(force) {
@@ -801,7 +824,7 @@ function renderLive(force) {
     const mine = ms.find(m => m.h === me.id || m.a === me.id);
     ui.watch = (mine || ms[0] || {}).h + '|' + (mine || ms[0] || {}).a;
     app.innerHTML = `
-    <div class="ah"><h2>${esc(cup.live.title)}</h2><div class="prog" id="lv-speed"></div></div>
+    <div class="ah"><h2>${esc(cup.live.title)}</h2>${isHost ? speedCtrl(cup.live.speed) : '<div class="prog" id="lv-speed"></div>'}</div>
     <div class="cgrid">
       <div>
         <div class="panel live-panel">
@@ -810,7 +833,7 @@ function renderLive(force) {
           <div class="pens-live" id="pens-live"></div>
           <div class="chips-m" id="lv-matches"></div>
           ${reactBar()}
-          ${isHost ? `<div class="ctrl"><span class="lbl" style="align-self:center">Velocidade</span><div class="seg speeds">${E.SPEEDS_LIVE.map(s => `<button data-sp="${s}">${s}x</button>`).join('')}</div><button class="ghost" id="lv-skip">Pular para o fim da rodada</button></div>` : ''}
+          ${isHost ? `<div class="ctrl"><button class="ghost" id="lv-skip">Pular para o fim da rodada</button></div>` : ''}
         </div>
         <div class="box"><h3>Lance a lance</h3><ul class="feed" id="lv-feed"></ul></div>
       </div>
@@ -827,7 +850,7 @@ function renderLive(force) {
   $('#lv-matches').innerHTML = ms.map(m => { const [a, b] = scoreAt(m, min); const k = m.h + '|' + m.a; return `<button data-w="${esc(k)}" class="${ui.watch === k ? 'on' : ''}">${esc(teamById(m.h).name)} <b>${a}×${b}</b> ${esc(teamById(m.a).name)}</button>`; }).join('');
   app.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { ui.watch = b.dataset.w; feed = []; lastNotif = -1; renderLive(); });
   app.querySelectorAll('[data-sp]').forEach(b => b.classList.toggle('on', +b.dataset.sp === cup.live.speed));
-  $('#lv-speed').textContent = `Velocidade ${cup.live.speed}x · ${cup.live.speed === 2 ? '6' : cup.live.speed === 4 ? '3' : '2'} min por jogo`;
+  if ($('#lv-speed')) $('#lv-speed').textContent = 'Ritmo: ' + (E.LIVE_LABEL[cup.live.speed] || cup.live.speed + 'x');
   const wm = ms.find(m => m.h + '|' + m.a === ui.watch) || ms[0];
   if (wm) { viewer.setMatch(wm, teamById(wm.h), teamById(wm.a), state); $('#sb-h').innerHTML = tn(wm.h); $('#sb-a').innerHTML = tn(wm.a); }
   liveTick(true);
@@ -865,7 +888,7 @@ function liveTick(force) {
   $('#lv-feed').innerHTML = wm.ev.filter(e => e.m <= min).reverse().map(e => `<li class="ev-${e.t}">${evText(e, wm)}</li>`).join('') || '<li class="empty">Bola rolando…</li>';
   $('#lv-goals').innerHTML = ms.flatMap(m => m.ev.filter(e => (e.t === 'gol' || e.t === 'vermelho') && e.m <= min).map(e => ({ e, m }))).sort((x, y) => y.e.m - x.e.m).map(({ e, m }) => `<li>${evText(e, m)}</li>`).join('') || '<li class="empty">Nenhum gol ainda</li>';
   $('#lv-table').innerHTML = standingsHTML(min);
-  $('#lv-stats').innerHTML = statsHTML(min); bindStatTabs($('#lv-stats'));
+  $('#lv-stats').innerHTML = statsHTML(min, 3);
 }
 
 /* ---------- FIM ---------- */
@@ -874,6 +897,18 @@ function recordHTML() {
   const rows = Object.entries(rec).map(([id, r]) => ({ id, ...r })).sort((a, b) => b.tit - a.tit || b.vice - a.vice || b.v - a.v || (b.gp - b.gc) - (a.gp - a.gc));
   return `<div class="panel" style="margin-top:18px"><h2>Histórico da sala</h2><div class="lead">Somando todas as partidas jogadas nesta sala.</div>
     <table class="std"><tr><th>#</th><th>Time</th><th>🏆</th><th>Vice</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr>${rows.map((r, i) => `<tr class="${r.id === me.id ? 'me' : ''}"><td>${i + 1}</td><td style="font-family:Archivo;font-weight:700">${esc(r.name)} <small style="color:var(--muted);font-weight:500">${esc(r.coach)}</small></td><td class="pts">${r.tit}</td><td>${r.vice}</td><td>${r.j}</td><td>${r.v}</td><td>${r.e}</td><td>${r.d}</td><td>${r.gp - r.gc}</td></tr>`).join('')}</table></div>`;
+}
+// ranking final: top 5 de artilheiro, garçom, melhor jogador e paredão
+function rankingsHTML(ps, minJ) {
+  const tnm = r => esc((teamById(r.team) || {}).name || '');
+  const cols = [
+    ['⚽', 'Artilheiros', ps.filter(r => r.g).sort((a, b) => b.g - a.g || b.a - a.a), r => r.g + (r.g === 1 ? ' gol' : ' gols')],
+    ['🎯', 'Garçons', ps.filter(r => r.a).sort((a, b) => b.a - a.a || b.g - a.g), r => r.a + (r.a === 1 ? ' assist.' : ' assist.')],
+    ['⭐', 'Melhores jogadores', ps.filter(r => r.j >= minJ).sort((a, b) => b.nt / b.j - a.nt / a.j), r => 'nota ' + (r.nt / r.j).toFixed(2)],
+    ['🧤', 'Paredões', ps.filter(r => P(r.id).p === 'GK' && r.j).sort((a, b) => b.cs - a.cs || b.sv - a.sv), r => `${r.cs} SG · ${r.sv} def.`],
+  ];
+  return `<div class="panel rankings"><h2>Ranking do campeonato</h2><div class="lead">Os cinco melhores em cada quesito.</div><div class="rk-grid">${cols.map(([ic, t, list, v]) => `
+    <div class="rk"><div class="sc-h"><span class="sc-ic">${ic}</span><b>${t}</b></div><ol>${list.slice(0, 5).map((r, i) => `<li class="${i === 0 ? 'first' : ''}"><span class="pos">${i + 1}</span><span class="who">${pn(r.id)}<small>${tnm(r)}</small></span><span class="v">${v(r)}</span></li>`).join('') || '<li class="none">—</li>'}</ol></div>`).join('')}</div></div>`;
 }
 function renderEnd() {
   view = 'end';
@@ -907,6 +942,7 @@ function renderEnd() {
     ${card('Pechincha do leilão', steal ? esc(steal.p.n) : '—', steal ? `${esc(steal.team.name)} · ${fmt(steal.price)} · OVR ${steal.p.o}` : '')}
     ${card('Compra mais cara', exp ? esc(exp.p.n) : '—', exp ? `${esc(exp.team.name)} · ${fmt(exp.price)} · OVR ${exp.p.o}` : '')}
   </div>
+  ${rankingsHTML(ps, minJ)}
   <div class="panel">
     <h2>Compartilhe</h2><div class="lead">Copie e mande no grupo.</div>
     <textarea class="share" id="e-share" readonly></textarea>
