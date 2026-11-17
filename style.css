@@ -1,5 +1,7 @@
 
 :root{
+  /* cores de significado (posição, alerta): NUNCA mudam com o tema do modo. Não use --gold para isso. */
+  --ok:#3ddc84; --warn:#ffc833; --bad:#ff4d3d;
   --bg:#06140d; --bg2:#0b2016; --card:#0e2a1c; --card2:#123522; --line:rgba(243,236,216,.12); --line2:rgba(243,236,216,.22);
   --chalk:#f3ecd8; --muted:#93ab9b; --gold:#ffc833; --red:#ff4d3d; --green:#3ddc84; --blue:#5ab0ff;
 }
@@ -261,9 +263,9 @@ select{background:var(--bg2);border:1px solid var(--line2);border-radius:10px;pa
 .fslot .sp{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--gold)}
 .fslot .sn{font-weight:800;font-size:12px;line-height:1.15;margin:2px 0;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .fslot .sv{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)}
-.fslot.ok{border-color:rgba(61,220,132,.7)}
-.fslot.near{border-color:rgba(255,200,51,.8)}
-.fslot.bad{border-color:rgba(255,77,61,.9);background:rgba(60,12,8,.85)}
+.fslot.ok{border-color:color-mix(in srgb,var(--ok) 75%,transparent)}
+.fslot.near{border-color:color-mix(in srgb,var(--warn) 85%,transparent)}
+.fslot.bad{border-color:color-mix(in srgb,var(--bad) 90%,transparent);background:rgba(60,12,8,.85)}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 .lgrid{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}
@@ -679,3 +681,33 @@ table.sq-stats{width:100%;border-collapse:collapse;font-size:13px;min-width:520p
 .sq-stats td.mid{color:var(--muted)}
 .sq-stats td.lo{color:var(--red)}
 .sq-stats td.gkc{font-family:Archivo;color:var(--muted);font-size:12px}
+/* janela de trocas */
+.tr-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:-4px 0 14px}
+.tr-top>span{background:var(--bg2);border:1px solid var(--line2);border-radius:999px;padding:6px 12px;font-size:13px}
+.tr-top b{font-family:'IBM Plex Mono',monospace;color:var(--gold)}
+.tr-top .tr-wait{background:none;border:0;color:var(--muted)}
+.tgrid{display:grid;grid-template-columns:1.2fr .8fr;gap:18px}
+.tgrid>*{min-width:0}
+.tr-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tr-cols .lbl{margin-bottom:6px}
+.tr-p{display:grid;grid-template-columns:30px 34px 1fr;gap:6px;align-items:center;padding:6px 8px;border:1px solid var(--line);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:13px;background:var(--bg2)}
+.tr-p.on{border-color:var(--gold);background:color-mix(in srgb,var(--gold) 15%,var(--bg2))}
+.tr-p .po,.free-row .po{font-family:Anton;color:var(--gold)}
+.tr-p .pp,.free-row .pp{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)}
+.tr-p .pn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}
+.offer{padding:8px 0;border-bottom:1px dashed var(--line);font-size:13px;line-height:1.45}
+.offer .ctrl{margin-top:6px}
+.offer .ctrl button{padding:7px 12px;font-size:13px}
+.free-list{display:flex;flex-direction:column;gap:6px}
+.free-row{display:grid;grid-template-columns:30px 34px 1fr 60px minmax(0,200px) auto;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);font-size:13px}
+.free-row .pn{font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.free-row .pn small{display:block;font-weight:500;color:var(--muted);font-size:11px}
+.free-row .pr{font-family:'IBM Plex Mono',monospace;color:var(--gold);font-weight:700}
+.free-row select{padding:6px 8px;font-size:12px}
+.free-row button{padding:7px 10px;font-size:12px}
+.free-row button:disabled{opacity:.35;cursor:not-allowed}
+@media (max-width:900px){ .tgrid{grid-template-columns:1fr} }
+@media (max-width:640px){ .tr-cols{grid-template-columns:1fr} .free-row{grid-template-columns:28px 32px 1fr 50px;} .free-row select{grid-column:1/4} }
+
+.legend i.lg-ok{background:var(--ok)} .legend i.lg-near{background:var(--warn)} .legend i.lg-bad{background:var(--bad)}
+body.light{--ok:#1f9d5a;--warn:#d99a00;--bad:#d8392b}

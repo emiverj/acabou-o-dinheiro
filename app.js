@@ -28,7 +28,7 @@ const saveMe = () => { try { localStorage.setItem('acabou-me', JSON.stringify({ 
 let ch = null, state = null, isHost = false, offset = 0, lastSeen = 0, code = null;
 let loopIv = null, hbIv = null, joinIv = null, lobbyCh = null, view = null, lastStampKey = '';
 const rooms = new Map();
-const ui = { asel: null, settings: { base: 'europa', order: 'livre', budget: '100', max: '8', format: 'liga', speed: 'normal', hide: '0', pub: '1' }, sel: null, draft: null };
+const ui = { asel: null, settings: { base: 'europa', order: 'livre', trades: '0', budget: '100', max: '8', format: 'liga', speed: 'normal', hide: '0', pub: '1' }, sel: null, draft: null };
 
 const P = id => E.getP(state, id);
 const myTeam = () => state && state.teams.find(t => t.id === me.id);
@@ -108,7 +108,8 @@ function takeOver() {
   const sh = v => (typeof v === 'number' && v > 1e12) ? v - off : v;
   if (state.lot) { state.lot.endsAt = Math.max(sh(state.lot.endsAt), now + 4000); state.lot.closedAt = sh(state.lot.closedAt); }
   if (state.cup && state.cup.live) { state.cup.live.at = sh(state.cup.live.at); state.cup.live.endAt = sh(state.cup.live.endAt); }
-  state.lineupEndsAt = sh(state.lineupEndsAt);
+  state.lineupEndsAt = sh(state.lineupEndsAt); state.prepEndsAt = sh(state.prepEndsAt);
+  if (state.tr) state.tr.offers.forEach(o => { if (o.botAt) o.botAt = sh(o.botAt); });
   state.teams.forEach(t => { if (t.offSince) t.offSince = sh(t.offSince); });
   state.seen = {}; state.teams.forEach(t => state.seen[t.id] = now);
   const ot = teamById(old); if (ot && !ot.bot) { ot.offSince = now; state.seen[old] = now - 20000; }
@@ -128,6 +129,9 @@ setInterval(() => {
   if (humans.length > 1 && Date.now() - othersSeenAt > 9000) return;
   if (silent > 9000 + rank * 6000) takeOver();
 }, 1000);
+function note(id, msg) { state.notes = state.notes || {}; state.notes[id] = { m: msg, at: Date.now() }; }
+let lastNoteAt = 0;
+function checkNote() { const n = state && state.notes && state.notes[me.id]; if (n && n.at !== lastNoteAt) { lastNoteAt = n.at; toast(n.m); } }
 function act(a) { a.id = me.id; if (isHost) handleAction(a); else if (ch) ch.send('action', a); }
 
 const GRACE = 60000, OFFLINE_AFTER = 10000;
@@ -168,7 +172,11 @@ function handleAction(a) {
     case 'bid': if (t && state.phase === 'auction' && state.lot && state.lot.no === a.lotNo) { const err = E.placeBid(state, a.id, +a.amount, now); if (!err) publish(); } break;
     case 'pass': if (t && state.phase === 'auction' && state.lot && state.lot.no === a.lotNo) { E.passLot(state, a.id); publish(); } break;
     case 'lineup': if (t && state.phase === 'lineup') { E.setLineup(state, a.id, a.formation, a.lineup); publish(); } break;
-    case 'ready': if (t && state.phase === 'lineup') { t.ready = !!a.ready; publish(); } break;
+    case 'ready': if (t && (state.phase === 'lineup' || state.phase === 'trades')) { t.ready = !!a.ready; publish(); } break;
+    case 'offer': if (t && state.phase === 'trades') { const err = E.makeOffer(state, a.id, a.to, a.give, a.get, a.cash, now); if (err) note(a.id, err); publish(); } break;
+    case 'offerResp': if (t && state.phase === 'trades') { const err = E.respondOffer(state, a.oid, a.id, !!a.ok, now); if (err) note(a.id, err); publish(); } break;
+    case 'offerCancel': if (t && state.phase === 'trades') { E.cancelOffer(state, a.oid, a.id); publish(); } break;
+    case 'sign': if (t && state.phase === 'trades') { const err = E.signFree(state, a.id, a.pid, a.release, now); if (err) note(a.id, err); publish(); } break;
   }
 }
 function presenceCheck(now) {
@@ -193,6 +201,7 @@ function hostLoop() {
   try { localStorage.setItem('acabou-alive-' + code, String(now)); } catch (e) {}
   if (state.phase === 'auction') changed = E.tickAuction(state, now) || changed;
   else if (state.phase === 'cup') changed = E.tickLive(state, now) || changed;
+  else if (state.phase === 'trades') changed = E.tickTrades(state, now) || changed;
   else if (state.phase === 'lineup') {
     const humans = state.teams.filter(t => !E.botLike(t));
     if (humans.every(t => t.ready) || now > state.lineupEndsAt) { E.startCup(state); changed = true; }
@@ -221,7 +230,7 @@ async function createRoom() {
   if (!readNames()) return;
   code = genCode();
   const s = ui.settings;
-  const settings = { budget: +s.budget, max: +s.max, format: s.format, speed: s.speed, hideOvr: s.hide === '1', pub: s.pub === '1', base: s.base, order: s.order };
+  const settings = { budget: +s.budget, max: +s.max, format: s.format, speed: s.speed, hideOvr: s.hide === '1', pub: s.pub === '1', base: s.base, order: s.order, trades: s.trades === '1' };
   setBase(settings.base);
   state = E.newRoomState(code, me, settings); isHost = true;
   try { ch = await openChannel('room-' + code, onMsg); } catch (e) { toast(e.message); state = null; isHost = false; return; }
@@ -267,6 +276,7 @@ function leaveRoom() {
 /* ---------- render principal ---------- */
 function render() {
   updateBadge();
+  if (state) checkNote();
   setBase(state ? state.settings && state.settings.base : ui.settings.base);
   if (!state) return renderHome();
   // elenco fechado (vale também quando a última compra encerra o leilão)
@@ -276,7 +286,7 @@ function render() {
     if (ui.lastSlots != null && ui.lastSlots > 0 && left === 0) { playAcabou(); setTimeout(() => toast('Elenco fechado! Acabou o dinheiro?'), 1300); }
     ui.lastSlots = left;
   } else ui.lastSlots = null;
-  const fn = { lobby: renderLobby, auction: renderAuction, lineup: renderLineup, cup: renderCup, end: renderEnd }[state.phase];
+  const fn = { lobby: renderLobby, auction: renderAuction, trades: renderTrades, lineup: renderLineup, cup: renderCup, end: renderEnd }[state.phase];
   fn && fn();
 }
 function seg(key, opts, cls) {
@@ -294,6 +304,8 @@ const ICON = {
   priv: SVG('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'),
   shuffle: SVG('<path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>'),
   sector: SVG('<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="1.6" fill="currentColor"/><circle cx="13" cy="12" r="1.6" fill="currentColor"/><circle cx="18" cy="18" r="1.6" fill="currentColor"/>'),
+  swap: SVG('<path d="M4 8h13l-3-3M20 16H7l3 3"/>'),
+  lock2: SVG('<path d="M5 12h14"/><path d="M12 5v14" opacity=".25"/>'),
   book: SVG('<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M8 7h7M8 11h5"/>'),
 };
 const miniCard = t => `<span class="mini-card">${t}</span>`;
@@ -329,6 +341,7 @@ function renderHome() {
         <div class="field"><label>Velocidade do leilão</label>${seg('speed', [['normal','Normal',ICON.normal],['rapido','Rápido',ICON.rapido]], 'tiles')}</div>
         <div class="field"><label>Overall no leilão</label>${seg('hide', [['0','Visível',miniCard('88')],['1','Escondido',miniCard('?')]], 'tiles')}</div>
       </div>
+      <div class="field"><label>Janela de trocas</label>${seg('trades', [['0','Desligada',ICON.lock2,'Do leilão direto para a tática'],['1','Ligada',ICON.swap,'Trocas e mercado de sobras depois do leilão']], 'tiles row')}</div>
       <div class="field"><label>Sala</label>${seg('pub', [['1','Pública',ICON.pub,'Aparece em "Salas abertas"'],['0','Privada',ICON.priv,'Só entra quem tem o código']], 'tiles row')}</div>
       <button class="cta" id="create">Criar sala</button>
     </div>
@@ -410,7 +423,7 @@ function renderLobby() {
   $('#rulebook').onclick = showRules;
   $('#lobby-record').innerHTML = recordHTML();
   const nT = state.teams.length, poolEst = Math.ceil(nT * 1.5) + 1 + Math.ceil(nT * 12.5);
-  $('#rules').innerHTML = `<b>Pote desta partida:</b> ${poolEst} jogadores sorteados para ${nT * 11} vagas.<br><b>Regras da sala:</b> base ${BASE_NAMES[s.base] || 'Europa'} · orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · leilão ${s.order === 'setor' ? 'por setor, ' : ''}${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
+  $('#rules').innerHTML = `<b>Pote desta partida:</b> ${poolEst} jogadores sorteados para ${nT * 11} vagas.<br><b>Regras da sala:</b> base ${BASE_NAMES[s.base] || 'Europa'} · orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · ${s.trades ? 'com janela de trocas · ' : ''}leilão ${s.order === 'setor' ? 'por setor, ' : ''}${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
   $('#plist').innerHTML = state.teams.map(t => `<div class="prow2">
       <span class="dot" style="background:${t.color};width:14px;height:14px"></span>
       <div><div class="nm">${esc(t.name)}${t.id === me.id ? ' (você)' : ''}</div><small>${esc(t.coach)} · ${esc(t.formation)}${t.bot ? ' · ' + esc(t.pers.n) : ''}${statusTag(t)}</small></div>
@@ -520,7 +533,7 @@ function renderAuction() {
       <div class="panel" style="padding:14px">
         <div class="pitch-h" style="margin-bottom:10px"><h3 id="my-title">Seu time</h3><div style="width:200px" id="a-fsel"></div></div>
         <div id="mypitch"></div>
-        <div class="legend"><span><i style="background:var(--green)"></i>na posição</span><span><i style="background:var(--gold)"></i>adaptado</span><span><i style="background:var(--red)"></i>fora de posição</span></div>
+        <div class="legend"><span><i class="lg-ok"></i>na posição</span><span><i class="lg-near"></i>adaptado</span><span><i class="lg-bad"></i>fora de posição</span></div>
         <div class="hint">Toque em dois lugares do campinho para trocar jogadores de posição.</div>
       </div>
       <div class="side">
@@ -646,7 +659,7 @@ function frame() {
       else if (lot.auto) { bar.style.width = '100%'; bar.style.background = 'var(--muted)'; c.textContent = 'Lote só entre os bots…'; c.classList.remove('hot'); }
       else {
         bar.style.width = Math.min(100, left / sp.open * 100) + '%';
-        bar.style.background = left <= 1.5 ? 'var(--red)' : left <= 3 ? 'var(--gold)' : 'var(--green)';
+        bar.style.background = left <= 1.5 ? 'var(--bad)' : left <= 3 ? 'var(--warn)' : 'var(--ok)';
         if (!lot.leader) { const fl = E.floorFor(state, PLAYERS[lot.pid]); c.textContent = left <= 3 ? 'Ninguém? Última chance…' : 'Lance inicial: R$ ' + fl; c.classList.toggle('hot', left <= 3); }
         else if (left <= 1) { c.textContent = 'Dou-lhe três…'; c.classList.add('hot'); }
         else if (left <= 2) { c.textContent = 'Dou-lhe duas…'; c.classList.add('hot'); }
@@ -656,22 +669,102 @@ function frame() {
     }
   }
   if (state && state.phase === 'cup' && view === 'live') { try { liveTick(false); } catch (e) { console.error(e); } }
+  if (state && state.phase === 'trades' && $('#tr-cd')) { const s = Math.max(0, Math.ceil((state.prepEndsAt - hostNow()) / 1000)); $('#tr-cd').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
   if (state && state.phase === 'lineup' && $('#lu-cd')) { const s = Math.max(0, Math.ceil((state.lineupEndsAt - hostNow()) / 1000)); $('#lu-cd').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
 /* ---------- ESCALAÇÃO ---------- */
+/* ---------- janela de trocas ---------- */
+function renderTrades() {
+  const mt = myTeam(), tr = state.tr; ui.tr = ui.tr || { give: [], get: [], to: null, pay: 0, recv: 0, release: {} };
+  const others = state.teams.filter(t => !mt || t.id !== mt.id);
+  if (!ui.tr.to || !teamById(ui.tr.to)) ui.tr.to = others[0] && others[0].id;
+  if (view !== 'trades') {
+    view = 'trades';
+    app.innerHTML = `
+    <div class="ah"><h2>Janela de trocas</h2><div class="prog">A bola rola em <span class="countdown" id="tr-cd"></span></div></div>
+    <div class="tr-top" id="tr-top"></div>
+    <div class="tgrid">
+      <div class="panel" id="tr-build">
+        <h2>Montar proposta</h2><div class="lead">Escolha o time, marque quem sai e quem chega e, se quiser, coloque dinheiro no meio.</div>
+        <div class="field"><label>Negociar com</label><select id="tr-to"></select></div>
+        <div class="tr-cols"><div><div class="lbl">Você dá</div><div id="tr-mine"></div></div><div><div class="lbl">Você recebe</div><div id="tr-theirs"></div></div></div>
+        <div class="grid2" style="margin-top:12px"><div class="field"><label>Você paga (R$)</label><input type="text" inputmode="numeric" id="tr-pay" value="0"></div><div class="field"><label>Você recebe (R$)</label><input type="text" inputmode="numeric" id="tr-recv" value="0"></div></div>
+        <div id="tr-sum" class="hint"></div>
+        <button class="cta" id="tr-send">Propor troca</button>
+      </div>
+      <div class="side">
+        <div class="box"><h3>Propostas para você</h3><div id="tr-in"></div></div>
+        <div class="box"><h3>Suas propostas</h3><div id="tr-out"></div></div>
+        <div class="box"><h3>Negócios fechados</h3><ul class="feed small" id="tr-deals"></ul></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:18px"><h2>Mercado de sobras</h2><div class="lead">Jogadores que ficaram sem dono no leilão. Contrate com o dinheiro que sobrou: escolha quem sai do seu elenco (goleiro por goleiro, linha por linha).</div><div id="tr-free"></div></div>`;
+    $('#tr-to').onchange = e => { ui.tr.to = e.target.value; ui.tr.get = []; renderTrades(); };
+    const num = v => Math.max(0, Math.floor(+String(v).replace(/\D/g, '') || 0));
+    $('#tr-pay').oninput = e => { ui.tr.pay = num(e.target.value); sumLine(); };
+    $('#tr-recv').oninput = e => { ui.tr.recv = num(e.target.value); sumLine(); };
+    $('#tr-send').onclick = () => {
+      if (!ui.tr.give.length && !ui.tr.get.length) return toast('Marque pelo menos um jogador');
+      act({ type: 'offer', to: ui.tr.to, give: ui.tr.give, get: ui.tr.get, cash: ui.tr.pay - ui.tr.recv });
+      ui.tr.give = []; ui.tr.get = []; ui.tr.pay = ui.tr.recv = 0; $('#tr-pay').value = 0; $('#tr-recv').value = 0; toast('Proposta enviada');
+    };
+    app.addEventListener('click', tradeClicks);
+  }
+  const T = teamById(ui.tr.to);
+  const left = mt ? E.tradesLeft(state, mt) : 0;
+  setHTML($('#tr-top'), mt ? `<span>💰 Saldo <b>${fmt(mt.budget)}</b></span><span>🔁 Trocas <b>${E.TRADE_LIMIT - left}/${E.TRADE_LIMIT}</b></span>
+    <button class="${mt.ready ? 'ghost' : 'gold'}" id="tr-ready">${mt.ready ? 'Pronto ✓ (desfazer)' : 'Pronto, ir para a tática'}</button><button class="ghost" id="tr-attr">📋 Atributos do meu time</button>
+    ${isHost ? '<button class="ghost" id="tr-go">Encerrar janela agora</button>' : ''}<span class="tr-wait">${state.teams.filter(t => !E.botLike(t) && !t.ready).map(t => esc(t.name)).join(', ') ? 'Esperando: ' + state.teams.filter(t => !E.botLike(t) && !t.ready).map(t => esc(t.name)).join(', ') : ''}</span>` : '');
+  setHTML($('#tr-to'), others.map(t => `<option value="${t.id}" ${t.id === ui.tr.to ? 'selected' : ''}>${esc(t.name)}${E.botLike(t) ? ' (bot)' : ''} · ${fmt(t.budget)} · ${E.tradesLeft(state, t)} trocas</option>`).join(''));
+  const row = (id, side) => { const p = P(id), on = ui.tr[side].includes(id); return `<label class="tr-p ${on ? 'on' : ''}" data-tp="${side}:${id}"><span class="po">${p.o}</span><span class="pp">${E.POS_PT[p.p]}</span><span class="pn">${esc(p.n)}${state.penal[id] ? ' <i class="st-off">−5</i>' : ''}</span></label>`; };
+  const byPos = list => list.slice().sort((a, b) => (P(a).p === 'GK' ? -1 : 0) - (P(b).p === 'GK' ? -1 : 0) || P(b).o - P(a).o);
+  if (mt) setHTML($('#tr-mine'), byPos(mt.squad).map(id => row(id, 'give')).join(''));
+  if (T) setHTML($('#tr-theirs'), byPos(T.squad).map(id => row(id, 'get')).join(''));
+  sumLine();
+  const offTxt = o => { const A = teamById(o.from), B = teamById(o.to); return `<b>${esc(A.name)}</b> dá ${o.give.map(pn).join(', ') || 'ninguém'}${o.cash > 0 ? ' + ' + fmt(o.cash) : ''} · <b>${esc(B.name)}</b> dá ${o.get.map(pn).join(', ') || 'ninguém'}${o.cash < 0 ? ' + ' + fmt(-o.cash) : ''}`; };
+  const inc = tr.offers.filter(o => mt && o.to === mt.id), out = tr.offers.filter(o => mt && o.from === mt.id);
+  setHTML($('#tr-in'), inc.map(o => `<div class="offer">${offTxt(o)}<div class="ctrl"><button class="gold" data-ok="${o.id}">Aceitar</button><button class="ghost" data-no="${o.id}">Recusar</button></div></div>`).join('') || '<div class="empty">Nenhuma proposta</div>');
+  setHTML($('#tr-out'), out.map(o => `<div class="offer">${offTxt(o)}<div class="ctrl"><button class="ghost" data-cancel="${o.id}">Cancelar</button></div></div>`).join('') || '<div class="empty">Nenhuma proposta pendente</div>');
+  setHTML($('#tr-deals'), tr.deals.slice(0, 12).map(d => d.t === 'free' ? `<li>🛒 <b>${esc(teamById(d.from).name)}</b> contratou ${pn(d.get[0])} (${fmt(d.cash)}) e liberou ${pn(d.give[0])}</li>`
+    : d.t === 'no' ? `<li class="ev-chance">❌ ${esc(teamById(d.to).name)} recusou a proposta do ${esc(teamById(d.from).name)}</li>`
+    : `<li class="ev-gol">🤝 Negócio fechado! <b>${esc(teamById(d.from).name)}</b> recebe ${[...d.get.map(pn), d.cash < 0 ? fmt(-d.cash) : ''].filter(Boolean).join(' + ') || 'nada'} · <b>${esc(teamById(d.to).name)}</b> recebe ${[...d.give.map(pn), d.cash > 0 ? fmt(d.cash) : ''].filter(Boolean).join(' + ') || 'nada'}</li>`).join('') || '<li class="empty">Nenhum negócio ainda</li>');
+  if (tr.deals.length && tr.deals[0].t === 'ok' && ui.lastDeal !== tr.deals[0].at) { if (ui.lastDeal) play('gavel'); ui.lastDeal = tr.deals[0].at; }
+  const free = state.pool.slice().sort((a, b) => P(b).o - P(a).o).slice(0, 30);
+  setHTML($('#tr-free'), free.length ? `<div class="free-list">${free.map(id => { const p = P(id), pr = E.freePrice(state, id); const opts = mt ? mt.squad.filter(x => (P(x).p === 'GK') === (p.p === 'GK')).sort((a, b) => P(a).o - P(b).o) : [];
+    return `<div class="free-row"><span class="po">${p.o}</span><span class="pp">${E.POS_PT[p.p]}</span><span class="pn">${esc(p.n)}<small>${esc(p.t)}</small></span><span class="pr">${fmt(pr)}</span>
+    ${mt ? `<select data-rel="${id}">${opts.map(x => `<option value="${x}">sai ${esc(P(x).n)} (${P(x).o})</option>`).join('')}</select><button class="ghost" data-sign="${id}" ${mt.budget < pr ? 'disabled' : ''}>Contratar</button>` : ''}</div>`; }).join('')}</div>` : '<div class="empty">Não sobrou ninguém no pote.</div>');
+}
+function sumLine() {
+  const mt = myTeam(); if (!mt || !$('#tr-sum')) return;
+  const go = ui.tr.give.map(P), gi = ui.tr.get.map(P), sum = l => l.reduce((s, p) => s + p.o, 0);
+  setHTML($('#tr-sum'), `Sai: <b>${go.length}</b> jogador(es), soma de OVR ${sum(go)} · Chega: <b>${gi.length}</b>, soma ${sum(gi)}${ui.tr.pay || ui.tr.recv ? ` · Dinheiro: ${ui.tr.pay ? 'você paga ' + fmt(ui.tr.pay) : ''}${ui.tr.pay && ui.tr.recv ? ' e ' : ''}${ui.tr.recv ? 'você recebe ' + fmt(ui.tr.recv) : ''}` : ''}. A troca só fecha se os dois elencos continuarem com 1 goleiro e 10 de linha.`);
+}
+function tradeClicks(e) {
+  if (view !== 'trades') return;
+  const tp = e.target.closest('[data-tp]');
+  if (tp) { e.preventDefault(); const [side, id] = tp.dataset.tp.split(':'); const n = +id, L = ui.tr[side]; const i = L.indexOf(n); if (i >= 0) L.splice(i, 1); else L.push(n); renderTrades(); return; }
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.ok) act({ type: 'offerResp', oid: +b.dataset.ok, ok: true });
+  else if (b.dataset.no) act({ type: 'offerResp', oid: +b.dataset.no, ok: false });
+  else if (b.dataset.cancel) act({ type: 'offerCancel', oid: +b.dataset.cancel });
+  else if (b.dataset.sign) { const sel = app.querySelector(`select[data-rel="${b.dataset.sign}"]`); act({ type: 'sign', pid: +b.dataset.sign, release: sel ? +sel.value : null }); }
+  else if (b.id === 'tr-ready') { const m = myTeam(); act({ type: 'ready', ready: !(m && m.ready) }); }
+  else if (b.id === 'tr-attr') showMySquad();
+  else if (b.id === 'tr-go' && isHost) { state.teams.forEach(t => t.ready = true); E.tickTrades(state, Date.now()); publish(); }
+}
 function renderLineup() {
   const mt = myTeam();
   if (mt && !ui.draft) ui.draft = { formation: mt.formation, lineup: (mt.lineup && mt.lineup.length === 11 && !mt.lineup.includes(null) ? mt.lineup : E.autoLineup(state, mt.squad, mt.formation)).slice() };
   if (view !== 'lineup') {
     view = 'lineup'; ui.sel = null;
     app.innerHTML = `
-    <div class="ah"><h2>Escale seu time</h2><div class="prog">Começa sozinho em <span class="countdown" id="lu-cd"></span></div></div>
+    <div class="ah"><h2>Escale seu time</h2><div class="prog">A bola rola em <span class="countdown" id="lu-cd"></span></div></div>
     <div class="lgrid">
       <div class="panel" style="padding:14px"><div id="lu-pitch"></div>
-        <div class="legend"><span><i style="background:var(--green)"></i>na posição</span><span><i style="background:var(--gold)"></i>adaptado</span><span><i style="background:var(--red)"></i>fora de posição (rende bem menos)</span></div>
+        <div class="legend"><span><i class="lg-ok"></i>na posição</span><span><i class="lg-near"></i>adaptado</span><span><i class="lg-bad"></i>fora de posição (rende bem menos)</span></div>
         <div class="hint">Toque em dois jogadores para trocá-los de lugar.</div></div>
       <div class="side">
         <div class="panel" id="lu-ctrl"></div>
@@ -1082,7 +1175,7 @@ function fillMail() {
   document.querySelectorAll('a.mail').forEach(a => { a.href = 'mailto:' + addr + '?subject=Acabou%20o%20dinheiro%3F'; a.textContent = addr; });
 }
 function showRules() {
-  $('#modal').innerHTML = `<div class="modal" id="mbg"><div class="inner" style="max-width:820px"><div class="top"><h2>Livro de regras</h2><button class="ghost" id="mclose">Fechar</button></div>${rulesHTML(state ? state.settings : { base: ui.settings.base, order: ui.settings.order, budget: +ui.settings.budget, speed: ui.settings.speed, format: ui.settings.format })}</div></div>`;
+  $('#modal').innerHTML = `<div class="modal" id="mbg"><div class="inner" style="max-width:820px"><div class="top"><h2>Livro de regras</h2><button class="ghost" id="mclose">Fechar</button></div>${rulesHTML(state ? state.settings : { base: ui.settings.base, order: ui.settings.order, trades: ui.settings.trades === '1', budget: +ui.settings.budget, speed: ui.settings.speed, format: ui.settings.format })}</div></div>`;
   $('#mclose').onclick = () => $('#modal').innerHTML = '';
   $('#mbg').onclick = e => { if (e.target.id === 'mbg') $('#modal').innerHTML = ''; };
 }
