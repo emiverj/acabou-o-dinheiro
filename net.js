@@ -40,6 +40,6 @@ export function track(tipo, dados) {
   try {
     fetch(SUPABASE_URL + '/rest/v1/eventos', { method: 'POST', keepalive: true,
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify({ tipo, sala: (dados && dados.sala) || null, dados: dados || {} }) }).catch(() => {});
+      body: JSON.stringify({ tipo, sala: (dados && dados.sala) || null, dados: { ...(dados || {}), em: new Date().toISOString() } }) }).catch(() => {});
   } catch (e) {}
 }

@@ -58,12 +58,14 @@ function updateBadge() {
 
 /* ---------- rede ---------- */
 let quietUntil = 0, lastLoopAt = 0;
+// técnicos humanos da sala, para a medição de uso (apelidos que eles mesmos digitaram)
+const whoPlays = () => state.teams.filter(t => !t.bot).map(t => ({ tecnico: t.coach, time: t.name, via: t.id === state.creatorId ? 'criou' : (t.via || 'codigo') }));
 function publish() {
   if (!isHost || !state) return;
   if (Date.now() < quietUntil) { render(); return; }
   if (state.phase === 'end' && state.cup && !state.cup.tracked) {
     state.cup.tracked = true; const ch0 = teamById(state.cup.final[0]);
-    track('campeonato_finalizado', { sala: code, formato: state.cup.format, tecnicos: state.teams.length, humanos: state.teams.filter(t => !t.bot).length, campeao_bot: !!(ch0 && ch0.bot) });
+    track('campeonato_finalizado', { sala: code, base: state.settings.base, formato: state.cup.format, tecnicos: state.teams.length, humanos: state.teams.filter(t => !t.bot).length, campeao_bot: !!(ch0 && ch0.bot), campeao: ch0 ? ch0.name : null, quem: whoPlays() });
   }
   state.v++; state.hostNow = Date.now();
   if (ch) ch.send('state', strip(state));
@@ -206,6 +208,7 @@ function handleAction(a) {
         if (state.phase !== 'lobby' || state.teams.length >= state.settings.max) { heartbeat(); return; }
         const used = state.teams.map(x => x.color); const idx = E.COLORS.findIndex(c => !used.includes(c));
         const nt = E.mkTeam(a.id, String(a.name || 'Técnico').slice(0, 18), String(a.team || '').slice(0, 22), false, Math.max(0, idx));
+        nt.via = ['lista', 'codigo', 'link'].includes(a.via) ? a.via : 'codigo';
         state.teams.push(nt); state.seen[a.id] = now;
       } else if (state.phase === 'lobby') { t.coach = String(a.name || t.coach).slice(0, 18); if (a.team) t.name = String(a.team).slice(0, 22); }
       publish(); break;
@@ -300,9 +303,10 @@ async function createRoom() {
   try { history.replaceState(null, '', '?sala=' + code); } catch (e) {}
   try { localStorage.setItem('acabou-member-' + code, me.id); } catch (e) {}
   startHostLoops(); publish();
-  track('sala_criada', { sala: code, base: settings.base, formato: settings.format, orcamento: settings.budget, publica: settings.pub });
+  track('sala_criada', { sala: code, base: settings.base, formato: settings.format, orcamento: settings.budget, publica: settings.pub, anfitriao: me.name, time: (state.teams[0] || {}).name });
 }
-async function joinRoom(c, auto) {
+async function joinRoom(c, auto, via) {
+  ui.via = via || (auto ? 'link' : 'codigo');
   c = String(c || '').trim().toUpperCase();
   if (c.length < 4) { toast('Código inválido'); return; }
   if (!auto && !readNames()) return;
@@ -327,7 +331,7 @@ async function joinRoom(c, auto) {
   isHost = false; state = null; renderConnecting();
   if (!me.name) { me.name = 'Técnico ' + me.id.slice(0, 3); }
   const claim = member && member !== me.id ? member : null;
-  const send = () => ch.send('action', { type: 'join', id: me.id, name: me.name, team: me.team, claim });
+  const send = () => ch.send('action', { type: 'join', id: me.id, name: me.name, team: me.team, claim, via: ui.via });
   send(); clearInterval(joinIv); joinIv = setInterval(send, 1500);
   setTimeout(() => { if (!state && code === c) { clearInterval(joinIv); joinIv = null; renderNotFound(); } }, 12000);
 }
@@ -433,8 +437,8 @@ function renderHome() {
   }));
   $('#f-max').onchange = e => ui.settings.max = e.target.value;
   $('#create').onclick = createRoom;
-  $('#join').onclick = () => joinRoom($('#f-code').value);
-  $('#f-code').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom($('#f-code').value); });
+  $('#join').onclick = () => joinRoom($('#f-code').value, false, 'codigo');
+  $('#f-code').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom($('#f-code').value, false, 'codigo'); });
   renderRooms(); ensureLobby();
 }
 function renderRooms() {
@@ -442,7 +446,7 @@ function renderRooms() {
   const now = Date.now(); const list = [...rooms.values()].filter(r => now - r.ts < 9000);
   el.innerHTML = list.length ? list.map(r => `<li><span><b>${esc(r.name)}</b><br><small>${esc(r.host)} · ${esc(BASE_NAMES[r.base] || 'Europa')} · ${r.count}/${r.max} técnicos</small></span><button class="ghost" data-code="${esc(r.code)}">Entrar</button></li>`).join('')
     : '<li class="empty" style="border:0;background:none">Nenhuma sala pública agora. Crie a sua!</li>';
-  el.querySelectorAll('button[data-code]').forEach(b => b.onclick = () => joinRoom(b.dataset.code));
+  el.querySelectorAll('button[data-code]').forEach(b => b.onclick = () => joinRoom(b.dataset.code, false, 'lista'));
 }
 setInterval(() => { if (view === 'home') renderRooms(); updateBadge(); }, 3000);
 // cliente avisa o anfitrião que continua conectado
@@ -510,7 +514,7 @@ function renderLobby() {
       const used = state.teams.map(x => x.color); const idx = E.COLORS.findIndex(c => !used.includes(c));
       state.teams.push(E.mkTeam('bot-' + Math.random().toString(36).slice(2, 7), opt[1], opt[0], true, idx)); publish();
     };
-    $('#startA').onclick = () => { if (state.teams.length < 2) return; E.startAuction(state); publish(); track('leilao_iniciado', { sala: code, tecnicos: state.teams.length, humanos: state.teams.filter(t => !t.bot).length }); };
+    $('#startA').onclick = () => { if (state.teams.length < 2) return; E.startAuction(state); publish(); track('leilao_iniciado', { sala: code, base: state.settings.base, tecnicos: state.teams.length, humanos: state.teams.filter(t => !t.bot).length, quem: whoPlays() }); };
   } else hc.innerHTML = `<span class="lead" style="margin:0">Aguardando o anfitrião começar o leilão…</span>`;
   if (mt) {
     if (!$('#fsel select')) { $('#fsel').innerHTML = formationSelect('form', mt.formation); $('#form').onchange = e => act({ type: 'formation', formation: e.target.value }); }
