@@ -756,3 +756,26 @@ body[data-mode=copa]:not(.light) .seg.tiles button.on{background:color-mix(in sr
 .maxrow{display:flex;align-items:center;gap:12px;margin-top:22px;padding-top:14px;border-top:1px dashed var(--line2)}
 .maxrow .bid.max{flex:0 0 46%;max-width:220px;min-height:52px}
 .maxrow span{font-size:12px;color:var(--muted)}
+/* editor de formação entre as rodadas */
+.fe-ctrl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0 12px}
+.fe-ctrl .field{margin:0;min-width:160px}
+/* encaixe do estilo de jogo no elenco */
+.tactics .fit{display:block;font-style:normal;margin-top:4px;font-size:11px;font-weight:700}
+.tactics .fit i{font-style:normal}
+.fit-ok{color:var(--ok)} .fit-bad{color:var(--bad)} .fit-n{color:var(--muted)}
+/* carta do leilão com altura fixa: nada quebra linha, então os botões de lance não mudam de lugar */
+.pc-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-club{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-nat span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+.pc-traits{flex-wrap:nowrap;height:24px;overflow:hidden;align-items:center}
+.pc-traits span{white-space:nowrap;flex:none}
+.pc-foot div{min-width:0}
+.pc-foot b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.board .leader,#l-leader{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#l-call{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* tema claro: o campinho continua verde-escuro, então o texto dele fica claro (antes ficava escuro sobre escuro) */
+body.light :is(.field-pitch,.pitch){--chalk:#f3ecd8;--muted:#b4c3b8;--gold:#ffd36b;color:#f3ecd8}
+body.light[data-mode=europa] :is(.field-pitch,.pitch){--gold:#8fd8ff}
+body.light[data-mode=copa] :is(.field-pitch,.pitch){--gold:#ffe08a}
+body.light .fslot .sn{color:#f6f1e2}
+body.light .bid small{color:#b4c3b8}

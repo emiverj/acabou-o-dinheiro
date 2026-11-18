@@ -216,7 +216,8 @@ function handleAction(a) {
     case 'arrange': if (t && state.phase === 'auction') { E.setArrangement(state, a.id, a.formation, a.lineup); publish(); } break;
     case 'bid': if (t && state.phase === 'auction' && state.lot && state.lot.no === a.lotNo) { const err = E.placeBid(state, a.id, +a.amount, now); if (!err) publish(); } break;
     case 'pass': if (t && state.phase === 'auction' && state.lot && state.lot.no === a.lotNo) { E.passLot(state, a.id); publish(); } break;
-    case 'lineup': if (t && state.phase === 'lineup') { E.setLineup(state, a.id, a.formation, a.lineup); publish(); } break;
+    // escalação: na tela de tática e também entre as rodadas do campeonato (fora da rodada ao vivo)
+    case 'lineup': if (t && (state.phase === 'lineup' || (state.phase === 'cup' && state.cup && !state.cup.live && !state.cup.done))) { E.setLineup(state, a.id, a.formation, a.lineup); publish(); } break;
     case 'ready': if (t && (state.phase === 'lineup' || state.phase === 'trades')) { t.ready = !!a.ready; publish(); } break;
     case 'offer': if (t && state.phase === 'trades') { const err = E.makeOffer(state, a.id, a.to, a.give, a.get, a.cash, now); if (err) note(a.id, err); publish(); } break;
     case 'offerResp': if (t && state.phase === 'trades') { const err = E.respondOffer(state, a.oid, a.id, !!a.ok, now); if (err) note(a.id, err); publish(); } break;
@@ -348,6 +349,10 @@ function render() {
     if (ui.lastSlots != null && ui.lastSlots > 0 && left === 0) { playAcabou(); setTimeout(() => toast('Elenco fechado! Acabou o dinheiro?'), 1300); }
     ui.lastSlots = left;
   } else ui.lastSlots = null;
+  // mudou de fase (vale também para o anfitrião, inclusive na 2ª partida da mesma sala): rascunho de escalação novo
+  if (ui.lastPhase !== state.phase) { ui.lastPhase = state.phase; ui.sel = null; ui.draft = null; }
+  // editor de formação aberto quando a rodada começa ao vivo (ou o campeonato acaba): fecha
+  if ($('#modal .fe') && !(state.phase === 'cup' && state.cup && !state.cup.live && !state.cup.done)) { $('#modal').innerHTML = ''; ui.fe = null; }
   const fn = { lobby: renderLobby, auction: renderAuction, trades: renderTrades, lineup: renderLineup, cup: renderCup, end: renderEnd }[state.phase];
   fn && fn();
 }
@@ -551,6 +556,14 @@ function cardHTML(p, hide) {
     <div class="pc-foot"><div><span>Posições</span><b>${posLabel(p)}${p.a.length ? ' · ' + alt : ''}</b></div><div>${p.y ? `<span>Copa do Mundo</span><b>${p.y}</b>` : `<span>${p.w ? 'Altura · peso' : 'Altura'}</span><b>${hw}</b>`}</div></div>
   </div>`;
 }
+// nomes longos diminuem a fonte em vez de quebrar linha (a carta fica sempre da mesma altura)
+function shrinkToFit(el, min) { if (!el) return; let fs = parseFloat(getComputedStyle(el).fontSize); while (el.scrollWidth > el.clientWidth + 1 && fs > min) { fs -= 1; el.style.fontSize = fs + 'px'; } }
+function fitCard(root) {
+  if (!root) return;
+  shrinkToFit(root.querySelector('.pc-name'), 15); shrinkToFit(root.querySelector('.pc-club'), 10); shrinkToFit(root.querySelector('.pc-nat span'), 8);
+  const tr = root.querySelector('.pc-traits'); if (tr) { let fs = 11; while (tr.scrollWidth > tr.clientWidth + 1 && fs > 7) { fs -= 0.5; tr.querySelectorAll('span').forEach(s => { s.style.fontSize = fs + 'px'; s.style.padding = '3px 6px'; }); } }
+  root.querySelectorAll('.pc-foot b').forEach(b => shrinkToFit(b, 9));
+}
 let lastCardNo = -1;
 const flagImg = p => p.f ? `<img class="flag" src="flags/${p.f}.svg" alt="" width="28" height="21">` : '';
 function renderAuction() {
@@ -623,7 +636,7 @@ function renderAuction() {
     $('#l-no').textContent = 'LOTE ' + lot.no;
     const fl = E.floorFor(state, p);
     $('#l-floor').textContent = fl > 1 ? `lance mínimo R$ ${fl}` : '';
-    if (lastCardNo !== lot.no) { lastCardNo = lot.no; $('#l-card').innerHTML = cardHTML(p, state.settings.hideOvr); }
+    if (lastCardNo !== lot.no) { lastCardNo = lot.no; $('#l-card').innerHTML = cardHTML(p, state.settings.hideOvr); fitCard($('#l-card')); }
     $('#l-price').textContent = fmt(lot.leader ? lot.price : 0);
     const L = lot.leader && teamById(lot.leader);
     $('#l-leader').innerHTML = L ? `<i class="dot" style="background:${L.color}"></i>${esc(L.name)}${L.id === me.id ? ' (você)' : ''}` : '<span style="color:var(--muted)">Ninguém ainda</span>';
@@ -844,6 +857,7 @@ function tradeClicks(e) {
 }
 function renderLineup() {
   const mt = myTeam();
+  if (mt && ui.draft && !sameSquad(ui.draft.lineup, mt.squad)) ui.draft = null;
   if (mt && !ui.draft) ui.draft = { formation: mt.formation, lineup: (mt.lineup && mt.lineup.length === 11 && !mt.lineup.includes(null) ? mt.lineup : E.autoLineup(state, mt.squad, mt.formation)).slice() };
   if (view !== 'lineup') {
     view = 'lineup'; ui.sel = null;
@@ -863,7 +877,7 @@ function renderLineup() {
       $('#lu-ctrl').innerHTML = `<h2>Formação</h2><div class="lead">Troque à vontade: os jogadores são reposicionados automaticamente.</div>
         <div class="field">${formationSelect('lu-form', ui.draft.formation)}</div>
         <div class="ctrl"><button class="ghost" id="lu-auto">Reorganizar automático</button><button class="ghost" id="lu-best">Sugerir formação</button></div>
-        <div class="field"><label>Estilo de jogo</label>${tacticPicker(mt.tactic)}</div>
+        <div class="field"><label>Estilo de jogo</label>${tacticPicker(mt.tactic, { formation: ui.draft.formation, lineup: ui.draft.lineup })}</div>
         <div class="ctrl"><button class="gold" id="lu-ready">Estou pronto</button><button class="ghost" id="lu-squads">Ver elencos</button></div>`;
       $('#lu-form').onchange = e => { ui.draft.formation = e.target.value; ui.draft.lineup = E.autoLineup(state, mt.squad, ui.draft.formation); ui.sel = null; sendDraft(); };
       $('#lu-auto').onclick = () => { ui.draft.lineup = E.autoLineup(state, mt.squad, ui.draft.formation); ui.sel = null; sendDraft(); };
@@ -884,11 +898,36 @@ function renderLineup() {
       renderLineup();
     };
     $('#lu-ready').textContent = mt.ready ? 'Pronto ✓ (desfazer)' : 'Estou pronto';
+    refreshFit($('#lu-ctrl'), { formation: ui.draft.formation, lineup: ui.draft.lineup });
   }
   $('#lu-teams').innerHTML = state.teams.map(t => `<div class="prow2" style="grid-template-columns:auto 1fr auto"><span class="dot" style="background:${t.color}"></span><div><div class="nm">${esc(t.name)}</div><small>${esc(t.formation)}</small></div>${t.ready ? '<span class="tag ok">pronto</span>' : '<span class="tag">escalando</span>'}</div>`).join('');
   $('#lu-host').innerHTML = isHost ? `<button class="gold" id="lu-go">Começar o campeonato agora</button>` : '';
   if (isHost) $('#lu-go').onclick = () => { E.startCup(state); publish(); };
 }
+// editor de formação e escalação entre as rodadas do campeonato (cada mudança vale na hora)
+function showFormEditor(refresh) {
+  const mt = myTeam(), cup = state.cup; if (!mt || !cup) return;
+  if (cup.live || cup.done || state.phase !== 'cup') { $('#modal').innerHTML = ''; ui.fe = null; return; }
+  if (!refresh || !ui.fe || !sameSquad(ui.fe.lineup, mt.squad)) ui.fe = { formation: mt.formation, lineup: (mt.lineup && sameSquad(mt.lineup, mt.squad) ? mt.lineup : E.autoLineup(state, mt.squad, mt.formation)).slice(), sel: null };
+  const fe = ui.fe, send = () => { act({ type: 'lineup', formation: fe.formation, lineup: fe.lineup.slice() }); showFormEditor(true); };
+  $('#modal').innerHTML = `<div class="modal" id="mbg"><div class="inner fe" style="max-width:760px"><div class="top"><h2>Formação e escalação</h2><button class="ghost" id="mclose">Fechar</button></div>
+    <div class="lead">Vale a partir da próxima rodada. Toque em dois jogadores para trocá-los de lugar.</div>
+    <div class="fe-ctrl"><div class="field">${formationSelect('fe-form', fe.formation)}</div><button class="ghost" id="fe-auto">Reorganizar automático</button><button class="ghost" id="fe-best">Sugerir formação</button></div>
+    <div id="fe-pitch">${pitchHTML(fe.lineup, fe.formation, { click: true, sel: fe.sel, ovr: true, prices: mt.paid })}</div>
+    <div class="legend"><span><i class="lg-ok"></i>na posição</span><span><i class="lg-near"></i>adaptado</span><span><i class="lg-bad"></i>fora de posição (rende bem menos)</span></div></div></div>`;
+  $('#mclose').onclick = () => { $('#modal').innerHTML = ''; ui.fe = null; };
+  $('#mbg').onclick = e => { if (e.target.id === 'mbg') { $('#modal').innerHTML = ''; ui.fe = null; } };
+  $('#fe-form').onchange = e => { fe.formation = e.target.value; fe.lineup = E.autoLineup(state, mt.squad, fe.formation); fe.sel = null; send(); };
+  $('#fe-auto').onclick = () => { fe.lineup = E.autoLineup(state, mt.squad, fe.formation); fe.sel = null; send(); };
+  $('#fe-best').onclick = () => { const b = E.bestFormation(state, mt.squad); fe.formation = b.name; fe.lineup = b.lineup.slice(); fe.sel = null; send(); toast('Sugestão: ' + b.name); };
+  $('#fe-pitch').onclick = e => {
+    const el = e.target.closest('.fslot[data-i]'); if (!el) return; const i = +el.dataset.i;
+    if (fe.sel == null) fe.sel = i; else if (fe.sel === i) fe.sel = null;
+    else { const l = fe.lineup; [l[fe.sel], l[i]] = [l[i], l[fe.sel]]; fe.sel = null; send(); return; }
+    showFormEditor(true);
+  };
+}
+function sameSquad(a, b) { return !!a && a.length === b.length && a.slice().sort((x, y) => x - y).join() === b.slice().sort((x, y) => x - y).join(); }
 function sendDraft() { act({ type: 'lineup', formation: ui.draft.formation, lineup: ui.draft.lineup.slice() }); renderLineup(); }
 
 function showSquads() {
@@ -948,9 +987,20 @@ function showMySquad() {
   $('#mclose').onclick = () => $('#modal').innerHTML = '';
   $('#mbg').onclick = e => { if (e.target.id === 'mbg') $('#modal').innerHTML = ''; };
 }
-function tacticPicker(cur) {
-  return `<div class="tactics">${E.TACTIC_NAMES.map(k => { const T = E.TACTICS[k]; return `<button data-tac="${k}" class="${(cur || 'equilibrado') === k ? 'on' : ''}" title="${esc(T.d)}"><span class="ti">${T.i}</span><b>${T.n}</b><small>${esc(T.d)}</small></button>`; }).join('')}</div>`;
+// estilos de jogo com o encaixe no elenco: quanto mais combina, mais o estilo rende
+function tacticPicker(cur, team) {
+  return `<div class="tactics">${E.TACTIC_NAMES.map(k => { const T = E.TACTICS[k], F = E.STYLE_FIT[k];
+    const d = T.d + (F ? ' Rende mais com ' + F.txt + '.' : '');
+    return `<button data-tac="${k}" class="${(cur || 'equilibrado') === k ? 'on' : ''}" title="${esc(d)}"><span class="ti">${T.i}</span><b>${T.n}</b><small>${esc(d)}</small><em class="fit" data-fit="${k}">${fitLabel(k, team)}</em></button>`; }).join('')}</div>`;
 }
+function fitLabel(k, team) {
+  if (k === 'equilibrado') return '<i class="fit-n">neutro</i>';
+  if (!team) return '';
+  const f = E.styleFit(state, team, k);
+  return f >= 0.3 ? '<i class="fit-ok">✓ combina muito</i>' : f >= 0.05 ? '<i class="fit-ok">combina</i>' : f > -0.25 ? '<i class="fit-n">neutro</i>' : '<i class="fit-bad">✗ não combina</i>';
+}
+// atualiza os selos de encaixe (a escalação mudou)
+function refreshFit(root, team) { if (root) root.querySelectorAll('[data-fit]').forEach(el => setHTML(el, fitLabel(el.dataset.fit, team))); }
 function bindTactics(root) { root.querySelectorAll('[data-tac]').forEach(b => b.onclick = () => { act({ type: 'tactic', tactic: b.dataset.tac }); root.querySelectorAll('[data-tac]').forEach(x => x.classList.toggle('on', x === b)); toast('Estilo: ' + E.TACTICS[b.dataset.tac].n); }); }
 const tacTag = k => { const T = E.TACTICS[k || 'equilibrado']; return `<span class="tac-tag" title="${esc(T.d)}">${T.i} ${T.n}</span>`; };
 function cmpHTML(c) {
@@ -1046,13 +1096,13 @@ function renderCup(force) {
     <div>
       ${up.length ? `<div class="panel" style="padding:16px;margin-bottom:14px">${isHost ? speedCtrl(ui.liveSpeed || E.LIVE_DEFAULT) : ''}<div class="lbl" style="margin:0 0 8px">Próximos jogos · ${esc(E.nextTitle(state))}</div><div class="matches">${up.map(matchCard).join('')}</div>
         <div class="ctrl">${isHost ? `<button class="gold" id="c-watch">▶ Assistir a rodada</button><button class="ghost" id="c-all">Simular o resto do campeonato</button>` : '<span class="lead" style="margin:0">O anfitrião vai começar a rodada.</span>'}</div></div>` : ''}
-      ${myTeam() && up.length ? `<div class="panel tac-panel"><div class="lbl" style="margin:0 0 8px">Seu estilo de jogo para esta rodada</div>${tacticPicker(myTeam().tactic)}</div>` : ''}
+      ${myTeam() && up.length ? `<div class="panel tac-panel"><div class="lbl" style="margin:0 0 8px">Seu estilo de jogo para esta rodada</div>${tacticPicker(myTeam().tactic, myTeam())}</div>` : ''}
       ${cup.last ? `<div class="lbl" style="margin:0 0 8px">Resultados · ${esc(cup.last.title)}</div><div class="matches">${cup.last.matches.map(matchCard).join('')}</div>` : ''}
-      <div class="ctrl">${myTeam() ? '<button class="ghost" id="c-mine">📋 Atributos do meu time</button>' : ''}<button class="ghost" id="c-sq">Ver elencos</button></div>
+      <div class="ctrl">${myTeam() && up.length ? '<button class="gold" id="c-form">🧩 Formação e escalação</button>' : ''}${myTeam() ? '<button class="ghost" id="c-mine">📋 Atributos do meu time</button>' : ''}<button class="ghost" id="c-sq">Ver elencos</button></div>
     </div>
     <div class="side"><div class="box">${standingsHTML(90)}</div><div class="box" id="c-stats">${statsHTML(undefined, 3)}</div></div>
   </div>`;
-  $('#c-sq').onclick = showSquads; bindTactics(app); if ($('#c-mine')) $('#c-mine').onclick = showMySquad;
+  $('#c-sq').onclick = showSquads; bindTactics(app); if ($('#c-mine')) $('#c-mine').onclick = showMySquad; if ($('#c-form')) $('#c-form').onclick = showFormEditor;
   if (isHost && up.length) {
     app.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => { ui.liveSpeed = +b.dataset.sp; app.querySelectorAll('[data-sp]').forEach(x => x.classList.toggle('on', x === b)); });
     $('#c-watch').onclick = () => { E.startRound(state, Date.now(), ui.liveSpeed || E.LIVE_DEFAULT); publish(); };
