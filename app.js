@@ -556,6 +556,14 @@ function cardHTML(p, hide) {
     <div class="pc-foot"><div><span>Posições</span><b>${posLabel(p)}${p.a.length ? ' · ' + alt : ''}</b></div><div>${p.y ? `<span>Copa do Mundo</span><b>${p.y}</b>` : `<span>${p.w ? 'Altura · peso' : 'Altura'}</span><b>${hw}</b>`}</div></div>
   </div>`;
 }
+// nomes longos diminuem a fonte em vez de quebrar linha (a carta fica sempre da mesma altura)
+function shrinkToFit(el, min) { if (!el) return; let fs = parseFloat(getComputedStyle(el).fontSize); while (el.scrollWidth > el.clientWidth + 1 && fs > min) { fs -= 1; el.style.fontSize = fs + 'px'; } }
+function fitCard(root) {
+  if (!root) return;
+  shrinkToFit(root.querySelector('.pc-name'), 15); shrinkToFit(root.querySelector('.pc-club'), 10); shrinkToFit(root.querySelector('.pc-nat span'), 8);
+  const tr = root.querySelector('.pc-traits'); if (tr) { let fs = 11; while (tr.scrollWidth > tr.clientWidth + 1 && fs > 7) { fs -= 0.5; tr.querySelectorAll('span').forEach(s => { s.style.fontSize = fs + 'px'; s.style.padding = '3px 6px'; }); } }
+  root.querySelectorAll('.pc-foot b').forEach(b => shrinkToFit(b, 9));
+}
 let lastCardNo = -1;
 const flagImg = p => p.f ? `<img class="flag" src="flags/${p.f}.svg" alt="" width="28" height="21">` : '';
 function renderAuction() {
@@ -628,7 +636,7 @@ function renderAuction() {
     $('#l-no').textContent = 'LOTE ' + lot.no;
     const fl = E.floorFor(state, p);
     $('#l-floor').textContent = fl > 1 ? `lance mínimo R$ ${fl}` : '';
-    if (lastCardNo !== lot.no) { lastCardNo = lot.no; $('#l-card').innerHTML = cardHTML(p, state.settings.hideOvr); }
+    if (lastCardNo !== lot.no) { lastCardNo = lot.no; $('#l-card').innerHTML = cardHTML(p, state.settings.hideOvr); fitCard($('#l-card')); }
     $('#l-price').textContent = fmt(lot.leader ? lot.price : 0);
     const L = lot.leader && teamById(lot.leader);
     $('#l-leader').innerHTML = L ? `<i class="dot" style="background:${L.color}"></i>${esc(L.name)}${L.id === me.id ? ' (você)' : ''}` : '<span style="color:var(--muted)">Ninguém ainda</span>';

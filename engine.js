@@ -179,7 +179,7 @@ export const TACTICS = {
   contra: { n: 'Contra-ataque', i: '⚡', d: 'Abre mão da bola. Ataque forte contra quem é ofensivo ou de toque de bola.', a: 0, m: -1, df: 1, pos: -8, sh: 0, fo: 0, off: 0.6 },
   pressao: { n: 'Pressão alta', i: '🏃', d: 'Meio e ataque mais fortes, defesa −1. Mais faltas e cartões; anula o toque de bola.', a: 1, m: 2, df: -1, pos: 3, sh: 1, fo: 4, off: 0.2 },
   pontas: { n: 'Pelas pontas', i: '↔️', d: 'Jogo aberto pelos lados: ataque mais forte, defesa −1, mais cruzamentos e escanteios. Abre retrancas.', a: 2, m: 0, df: -1, pos: 1, sh: 2, fo: 0, off: 0.3 },
-  aereo: { n: 'Jogo aéreo', i: '✈️', d: 'Bola longa na área: ataque mais forte, meio −2 e muito mais gols de cabeça. Passa por cima da retranca.', a: 2, m: -2, df: 0, pos: -4, sh: 1, fo: 1, off: 0.3 },
+  aereo: { n: 'Bola na área', i: '✈️', d: 'Bola longa na área: ataque mais forte, meio −2 e muito mais gols de cabeça. Passa por cima da retranca.', a: 2, m: -2, df: 0, pos: -4, sh: 1, fo: 1, off: 0.3 },
 };
 export const TACTIC_NAMES = Object.keys(TACTICS);
 const tac = t => TACTICS[t.tactic] || TACTICS.equilibrado;
@@ -364,8 +364,8 @@ function whyText(state, m, h, a, sh, sa) {
     if (m.ev.some(e => e.t === 'vermelho' && e.s === l)) opts.push([4, `O cartão vermelho complicou a vida do ${nm(l)}.`]);
     if (T[winS].tactic === 'contra' && st[winS].pos < 45) opts.push([4.5, `O contra-ataque funcionou: o ${nm(winS)} venceu com só ${st[winS].pos}% de posse.`]);
     const wt = T[winS].tactic, lt = T[l].tactic, wf = styleFit(state, T[winS], wt), lf = styleFit(state, T[l], lt);
-    if (wt !== 'equilibrado' && wf >= 0.3) opts.push([4.4, `O estilo encaixou: o ${nm(winS)} jogou no ${TACTICS[wt].n.toLowerCase()} e tem ${STYLE_FIT[wt].txt} para isso.`]);
-    if (lt !== 'equilibrado' && lf <= -0.3) opts.push([4.1, `O ${nm(l)} apostou no ${TACTICS[lt].n.toLowerCase()}, mas o elenco não combina com esse estilo (falta ${STYLE_FIT[lt].txt}).`]);
+    if (wt !== 'equilibrado' && wf >= 0.3) opts.push([4.4, `O estilo encaixou: o ${nm(winS)} foi de ${TACTICS[wt].n} e tem ${STYLE_FIT[wt].txt} para isso.`]);
+    if (lt !== 'equilibrado' && lf <= -0.3) opts.push([4.1, `O ${nm(l)} apostou em ${TACTICS[lt].n}, mas o elenco não combina com esse estilo (falta ${STYLE_FIT[lt].txt}).`]);
     if (W.a + W.m + W.d < Lo.a + Lo.m + Lo.d - 4) opts.push([4.2, `Zebra! No papel o ${nm(l)} era mais forte, mas o ${nm(winS)} foi mais eficiente.`]);
     if (!opts.length) opts.push([1, `Jogo parelho, decidido nos detalhes a favor do ${nm(winS)}.`]);
   } else {
