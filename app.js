@@ -545,9 +545,9 @@ function renderAuction() {
       </div>
     </div>`;
     app.querySelectorAll('.bid[data-inc]').forEach(b => b.onclick = () => bidInc(+b.dataset.inc));
-    $('#l-max').onclick = () => { const mt = myTeam(); if (mt) bidAmount(E.maxAllowed(mt)); };
+    $('#l-max').onclick = maxBid;
     $('#l-pass').onclick = () => state.lot && act({ type: 'pass', lotNo: state.lot.no });
-    $('#l-send').onclick = () => { const v = parseInt($('#l-custom').value, 10); if (v > 0) { bidAmount(v); $('#l-custom').value = ''; } };
+    $('#l-send').onclick = () => { const v = parseInt($('#l-custom').value, 10); if (v > 0 && confirmBig(v, 'send')) $('#l-custom').value = ''; };
     $('#l-custom').addEventListener('keydown', e => { if (e.key === 'Enter') $('#l-send').click(); });
     $('#ff').onclick = () => { if (isHost) { E.skipToEnd(state, Date.now()); publish(); } };
     const mt = myTeam();
@@ -583,7 +583,11 @@ function renderAuction() {
     const can = mt && lot.status === 'open' && !lot.auto && E.needFor(state, mt, p) && lot.leader !== mt.id;
     const lim = mt ? E.maxAllowed(mt) : 0, base = lot.leader ? lot.price : 0, mn = (mt && lot.status === 'open') ? E.minBid(state, mt) : 1;
     app.querySelectorAll('.bid[data-inc]').forEach(b => { const amt = Math.max(mn, base + +b.dataset.inc); b.querySelector('small').textContent = fmt(amt); b.disabled = !can || amt > lim; });
+    const armed = ui.arm && ui.arm.lot === lot.no && ui.arm.src === 'max' && Date.now() < ui.arm.until && ui.arm.amount === lim;
+    $('#l-max').classList.toggle('armed', !!armed); $('#l-max').firstChild.textContent = armed ? 'Confirmar?' : 'Máx.';
     $('#l-max small').textContent = fmt(lim); $('#l-max').disabled = !can || lim < mn;
+    const armS = ui.arm && ui.arm.lot === lot.no && ui.arm.src === 'send' && Date.now() < ui.arm.until;
+    $('#l-send').classList.toggle('armed', !!armS); $('#l-send').textContent = armS ? 'Confirmar ' + fmt(ui.arm.amount) + '?' : 'Dar lance';
     $('#l-pass').disabled = !can || (lot.passed || []).includes(me.id);
     $('#l-send').disabled = !can; $('#l-custom').disabled = !can;
     $('#bidzone').style.display = mt ? '' : 'none';
@@ -637,6 +641,21 @@ function bidInc(inc) {
   const lot = state && state.lot, mt = myTeam(); if (!lot || !mt) return;
   bidAmount(Math.max(E.minBid(state, mt), (lot.leader ? lot.price : 0) + inc));
 }
+// lance alto pede confirmação: o primeiro toque só arma, o segundo (em até 3 s, mesmo lote e mesmo valor) dá o lance
+const ARM_MS = 3000;
+function confirmBig(amount, src) {
+  const lot = state && state.lot, mt = myTeam(); if (!lot || !mt || lot.status !== 'open') return false;
+  const lim = E.maxAllowed(mt), big = src === 'max' || amount >= Math.max((lot.leader ? lot.price : 0) + 11, Math.ceil(lim * 0.5));
+  if (!big) { bidAmount(amount); return true; }
+  const a = ui.arm;
+  if (a && a.lot === lot.no && a.src === src && a.amount === amount && Date.now() < a.until) { ui.arm = null; bidAmount(amount); return true; }
+  if (amount > lim) { toast('Acima do seu teto: ' + fmt(lim)); return false; }
+  ui.arm = { lot: lot.no, src, amount, until: Date.now() + ARM_MS };
+  setTimeout(() => { if (ui.arm && Date.now() >= ui.arm.until) { ui.arm = null; if (view === 'auction') renderAuction(); } }, ARM_MS + 50);
+  if (view === 'auction') renderAuction();
+  return false;
+}
+function maxBid() { const mt = myTeam(); if (mt) confirmBig(E.maxAllowed(mt), 'max'); }
 function bidAmount(amount) {
   const lot = state && state.lot, mt = myTeam(); if (!lot || !mt || lot.status !== 'open') return;
   if (amount > E.maxAllowed(mt)) { toast('Acima do seu teto: ' + fmt(E.maxAllowed(mt))); return; }
@@ -648,7 +667,7 @@ document.addEventListener('keydown', e => {
   if (!state || state.phase !== 'auction' || ['INPUT', 'SELECT'].includes(e.target.tagName)) return;
   const m = { '1': 1, '2': 5, '3': 10 }[e.key];
   if (m) { e.preventDefault(); bidInc(m); }
-  else if (e.key === '4') { const mt = myTeam(); if (mt) bidAmount(E.maxAllowed(mt)); }
+  else if (e.key === '4') maxBid();
   else if ((e.key === 'p' || e.key === 'P') && state.lot) act({ type: 'pass', lotNo: state.lot.no });
 });
 // timer suave

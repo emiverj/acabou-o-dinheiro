@@ -747,3 +747,6 @@ body[data-mode=copa]:not(.light) .seg.tiles button.on{background:color-mix(in sr
 @media (max-width:640px){ .support{flex-direction:column;text-align:center} }
 /* formatos de campeonato: 2×2 no celular */
 @media (max-width:640px){ .seg.tiles.fmt{grid-auto-flow:row;grid-template-columns:1fr 1fr} .seg.tiles.fmt button{min-height:70px;min-width:0} }
+/* lance máximo / lance alto armado: pede o segundo toque para confirmar */
+.bid.max.armed,body .bid.max.armed,#l-send.armed{background:var(--bad)!important;color:#fff!important;border-color:var(--bad)!important;animation:armpulse .6s ease-in-out infinite alternate}
+@keyframes armpulse{from{box-shadow:0 0 0 0 rgba(255,77,61,.0)}to{box-shadow:0 0 0 5px rgba(255,77,61,.35)}}
