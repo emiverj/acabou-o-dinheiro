@@ -23,8 +23,35 @@ export const FORMATIONS = {
   '3-5-2':          f(GKS, BACK3, [['CDM',37,42],['CDM',63,42],['LM',11,57],['CAM',50,63],['RM',89,57],['ST',37,85],['ST',63,85]]),
   '3-4-3':          f(GKS, BACK3, [['LM',11,54],['CM',37,49],['CM',63,49],['RM',89,54],['LW',19,79],['ST',50,86],['RW',81,79]]),
   '5-3-2':          f(GKS, BACK5, [['CM',28,52],['CDM',50,45],['CM',72,52],['ST',37,84],['ST',63,84]]),
+  '4-1-4-1':        f(GKS, BACK4, [['CDM',50,40],['LM',13,60],['CM',37,56],['CM',63,56],['RM',87,60],['ST',50,85]]),
+  '4-4-1-1':        f(GKS, BACK4, [['LM',13,52],['CM',38,46],['CM',62,46],['RM',87,52],['CF',50,69],['ST',50,86]]),
+  '4-2-2-2 Quadrado mágico': f(GKS, BACK4, [['CDM',36,42],['CDM',64,42],['CAM',27,64],['CAM',73,64],['ST',37,85],['ST',63,85]]),
+  '3-4-2-1':        f(GKS, BACK3, [['LM',11,50],['CM',37,45],['CM',63,45],['RM',89,50],['CAM',33,68],['CAM',67,68],['ST',50,86]]),
+  '5-4-1':          f(GKS, BACK5, [['LM',13,57],['CM',38,50],['CM',62,50],['RM',87,57],['ST',50,85]]),
 };
 export const FORMATION_NAMES = Object.keys(FORMATIONS);
+/* Ligações do Fechamento (como o entrosamento do antigo Ultimate Team): só jogadores vizinhos no campinho se ligam.
+   Vizinho = ninguém fica mais perto dos dois ao mesmo tempo; o goleiro liga com os zagueiros, a linha de defesa liga em sequência
+   e todo jogador tem pelo menos 2 ligações. */
+function formationLinks(sl) {
+  const pt = sl.map(s => [s.x * 0.85, s.y]), n = pt.length, ed = [], has = (i, j) => ed.some(e => (e[0] === i && e[1] === j) || (e[0] === j && e[1] === i));
+  const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    const dij = d(pt[i], pt[j]); if (dij > 46) continue;
+    if (pt.some((p, k) => k !== i && k !== j && Math.max(d(p, pt[i]), d(p, pt[j])) < dij * 0.97)) continue;
+    ed.push([i, j]);
+  }
+  const gk = sl.findIndex(s => s.pos === 'GK');
+  sl.forEach((s, i) => { if (s.pos === 'CB' && !has(gk, i)) ed.push([gk, i]); });
+  const back = sl.map((s, i) => i).filter(i => ['LB', 'CB', 'RB', 'LWB', 'RWB'].includes(sl[i].pos)).sort((a, b) => sl[a].x - sl[b].x);
+  for (let k = 0; k + 1 < back.length; k++) if (!has(back[k], back[k + 1])) ed.push([back[k], back[k + 1]]);
+  for (let i = 0; i < n; i++) while (ed.filter(e => e.includes(i)).length < 2) {
+    const c = sl.map((_, j) => j).filter(j => j !== i && j !== gk && !has(i, j)).sort((a, b) => d(pt[i], pt[a]) - d(pt[i], pt[b]))[0];
+    if (c == null) break; ed.push([i, c]);
+  }
+  return ed;
+}
+export const FORMATION_LINKS = Object.fromEntries(FORMATION_NAMES.map(n => [n, formationLinks(FORMATIONS[n])]));
 
 /* ---------------- Jogadores ---------------- */
 export function getP(state, id) {
@@ -90,7 +117,22 @@ export function autoLineup(state, squad, formation) {
   // leve preferência pela posição principal quando a nota empata
   const cost = slots.map(s => ps.map(p => -slotScore(p, s.pos) - (p.p === s.pos ? 0.05 : 0)));
   const a = hungarian(cost);
-  return slots.map((s, i) => squad[a[i]]);
+  const lineup = slots.map((s, i) => squad[a[i]]);
+  return chemOn(state) ? chemArrange(state, formation, lineup) : lineup;
+}
+// Fechamento ligado: tenta trocar jogadores de lugar para deixar os ligados lado a lado, se isso deixar o time mais forte
+function chemArrange(state, formation, lineup) {
+  const tot = l => { const s = strength(state, { formation, lineup: l }); return s.a + s.m + s.d; };
+  let best = lineup.slice(), bv = tot(best);
+  for (let pass = 0; pass < 4; pass++) {
+    let improved = false;
+    for (let i = 0; i < best.length; i++) for (let j = i + 1; j < best.length; j++) {
+      const t = best.slice(); [t[i], t[j]] = [t[j], t[i]]; const v = tot(t);
+      if (v > bv + 0.01) { best = t; bv = v; improved = true; }
+    }
+    if (!improved) break;
+  }
+  return best;
 }
 
 /* Força por setor */
@@ -111,11 +153,11 @@ export function chemLink(p, q) {
   if (p.c && p.c === q.c && !(BASE_NOW() === 'brasileirao' && p.c === 'Brasil')) return { w: 1, k: 'pais', txt: p.c };
   return null;
 }
-// pontos de ligação de cada titular → bônus no rendimento: 2 pts = +1, 4 = +2, 6 ou mais = +3
-export const chemBonus = pts => pts >= 6 ? 3 : pts >= 4 ? 2 : pts >= 2 ? 1 : 0;
+// pontos de ligação de cada titular (só com vizinhos) → bônus no rendimento: cada ponto = +1, até +3
+export const chemBonus = pts => Math.min(3, pts);
 export function chemFor(state, team) {
   const ids = (team.lineup || []), n = ids.length, pts = Array(n).fill(0), links = [];
-  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+  for (const [i, j] of FORMATION_LINKS[team.formation] || []) {
     if (ids[i] == null || ids[j] == null) continue;
     const L = chemLink(getP(state, ids[i]), getP(state, ids[j])); if (!L) continue;
     pts[i] += L.w; pts[j] += L.w; links.push({ i, j, ...L });
@@ -124,12 +166,51 @@ export function chemFor(state, team) {
   return { pts, bonus, links, total: bonus.reduce((a, b) => a + b, 0) };
 }
 export const chemOn = state => !!(state && state.settings && state.settings.chem);
+/* ---------------- Cartas coringa (opção da sala) ----------------
+   Olheiro: revela OVR e atributos do jogador do lote atual só para quem usou (5 por leilão).
+   Lock In: antes de uma rodada, um titular joga com +5 e aparece mais nos gols (1 por campeonato). */
+export const SCOUT_USES = 5, LOCK_USES = 1, LOCK_BONUS = 5;
+export const cardsOn = state => !!(state && state.settings && state.settings.cards);
+const cardsOf = (state, id) => { state.cards = state.cards || {}; return state.cards[id] = state.cards[id] || { scout: 0, scoutLots: [], lock: 0 }; };
+export const scoutLeft = (state, id) => SCOUT_USES - ((state.cards && state.cards[id] && state.cards[id].scout) || 0);
+export const lockLeft = (state, id) => LOCK_USES - ((state.cards && state.cards[id] && state.cards[id].lock) || 0);
+export const scouted = (state, id, lotNo) => !!(state.cards && state.cards[id] && state.cards[id].scoutLots.includes(lotNo));
+export function useScout(state, teamId, lotNo) {
+  if (!cardsOn(state) || state.phase !== 'auction' || !state.lot || state.lot.no !== lotNo || state.lot.status !== 'open') return 'Agora não dá para usar o Olheiro';
+  const c = cardsOf(state, teamId); if (c.scoutLots.includes(lotNo)) return null;
+  if (c.scout >= SCOUT_USES) return 'Seus olheiros acabaram';
+  c.scout++; c.scoutLots.push(lotNo); return null;
+}
+function lockOf(state, team) { const L = state.cup && state.cup.lock; return L && L[team.id] != null ? L[team.id] : null; }
+export const lockedPlayer = (state, teamId) => (state.cup && state.cup.lock && state.cup.lock[teamId] != null) ? state.cup.lock[teamId] : null;
+export function useLock(state, teamId, pid) {
+  const cup = state.cup, t = state.teams.find(x => x.id === teamId);
+  if (!cardsOn(state) || state.phase !== 'cup' || !cup || cup.live || cup.done || !t) return 'O Lock In é escolhido entre as rodadas';
+  if (!(t.lineup || []).includes(pid)) return 'Escolha um titular';
+  const c = cardsOf(state, teamId), cur = lockedPlayer(state, teamId);
+  if (cur == null && c.lock >= LOCK_USES) return 'Você já usou o Lock In neste campeonato';
+  if (cur == null) c.lock++;
+  cup.lock = cup.lock || {}; cup.lock[teamId] = pid; return null;
+}
+export function cancelLock(state, teamId) { const cup = state.cup; if (!cup || cup.live || !cup.lock || cup.lock[teamId] == null) return; delete cup.lock[teamId]; cardsOf(state, teamId).lock--; }
+// bots guardam o Lock In para a reta final (última rodada da liga ou mata-mata) e escolhem o melhor do ataque
+function botLocks(state) {
+  const cup = state.cup; if (!cardsOn(state) || !cup) return;
+  const late = cup.phase === 'ko' || (cup.rounds && cup.ri >= cup.rounds.length - 1);
+  if (!late) return;
+  currentRound(state).forEach(m => [m.h, m.a].forEach(id => {
+    const t = state.teams.find(x => x.id === id); if (!t || !botLike(t) || lockLeft(state, id) <= 0 || lockedPlayer(state, id) != null) return;
+    const best = onField(state, t).filter(x => x.pos !== 'GK').sort((a, b) => b.p.o * (SECT[b.pos].a || .3) - a.p.o * (SECT[a.pos].a || .3))[0];
+    if (best) useLock(state, id, best.id);
+  }));
+}
 export function strength(state, team) {
   const slots = FORMATIONS[team.formation];
   const acc = { a:[0,0], m:[0,0], d:[0,0] };
   const ch = chemOn(state) && team.lineup && !team.lineup.every(x => x == null) ? chemFor(state, team) : null;
+  const lk = lockOf(state, team);
   slots.forEach((s, i) => {
-    const p = getP(state, team.lineup[i]); const sc = slotScore(p, s.pos) + (ch ? ch.bonus[i] : 0);
+    const p = getP(state, team.lineup[i]); const sc = slotScore(p, s.pos) + (ch ? ch.bonus[i] : 0) + (lk != null && team.lineup[i] === lk ? LOCK_BONUS : 0);
     for (const k in SECT[s.pos]) { acc[k][0] += SECT[s.pos][k] * sc; acc[k][1] += SECT[s.pos][k]; }
   });
   const r = {};
@@ -183,6 +264,7 @@ function pickScorer(state, team, header) {
     if (x.p.o >= 95) w *= 1 + (x.p.o - 94) * 0.35;
     if (header) w = (SECT[x.pos].a || 0.25) * Math.pow((x.p.h || 182) / 182, 6) * Math.pow(x.p.s[5] / 80, 2) * (hasK(x.p, 'Cabeceador') || hasK(x.p, 'Dono do alto') ? 1.8 : 1) + (x.pos === 'CB' ? 0.25 : 0);
     if (!header && (hasK(x.p, 'Decisivo'))) w *= 1.25;
+    if (lockOf(state, team) === x.id) w *= 1.6; // Lock In: o escolhido aparece mais
     return { id: x.id, w };
   }));
 }
@@ -490,6 +572,7 @@ function playCup(state, m) {
 }
 export function startRound(state, now, speed) {
   const cup = state.cup; if (!cup || cup.done || cup.live) return;
+  botLocks(state);
   const ms = currentRound(state);
   ms.forEach(m => {
     if (m.played) return;
@@ -518,6 +601,8 @@ export function commitRound(state) {
   if (ms.some(m => !m.played)) { cup.live = cup.live || { at: Date.now(), base: 90, speed: 6 }; ms.forEach(m => { if (!m.played) { if (!m.h || !m.a) { m.played = true; m.bye = true; m.w = m.h || m.a; } else playCup(state, m); } }); }
   cup.last = { title: nextTitle(state), matches: ms.filter(m => !m.bye) };
   cup.live = null;
+  // o Lock In vale só para a rodada em que foi usado
+  if (cup.lock) { ms.forEach(m => { if (!m.bye) m.locks = { h: cup.lock[m.h] ?? null, a: cup.lock[m.a] ?? null }; }); cup.lock = {}; }
   if (cup.phase === 'liga') {
     ms.forEach(m => applyTable(cup.table, m)); cup.ri++;
     if (cup.ri >= cup.rounds.length) {
@@ -658,7 +743,7 @@ export function startAuction(state) {
   const pool = buildPool(state.teams.length, state.settings.order === 'setor');
   state.sector = state.settings.order === 'setor' ? 0 : null;
   state.poolSize = pool.length; state.poolIds = pool.slice();
-  state.pool = pool; state.unsold = []; state.bag = []; state.lastLines = []; state.phase = 'auction'; state.lotNo = 0; state.log = []; state.history = []; state.penal = {}; state.base = {};
+  state.pool = pool; state.unsold = []; state.bag = []; state.lastLines = []; state.cards = {}; state.phase = 'auction'; state.lotNo = 0; state.log = []; state.history = []; state.penal = {}; state.base = {};
   state.teams.forEach(t => { t.budget = state.settings.budget; t.squad = []; t.lineup = Array(11).fill(null); t.ready = false; t.paid = {}; });
   if (state.teams.some(t => t.bot)) state.teams.forEach(t => { if (t.bot) t.formation = pick(FORMATION_NAMES); });
   const ovr = PLAYERS.map(p => p.o); state.lo = Math.min(...ovr); state.hi = Math.max(...ovr);
