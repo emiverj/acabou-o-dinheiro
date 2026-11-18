@@ -1,0 +1,778 @@
+{
+"Erling Haaland|Manchester City": {
+"x": "Ciborgue",
+"xi": "🦾"
+},
+"Kylian Mbappé|Real Madrid": {
+"x": "Goleador",
+"xi": "🎯"
+},
+"Jude Bellingham|Real Madrid": {
+"x": "Faz-tudo",
+"xi": "🧰"
+},
+"Ousmane Dembélé|PSG": {
+"x": "Ambidestro máximo",
+"xi": "🦶"
+},
+"Pedri|FC Barcelona": {
+"x": "Mágico",
+"xi": "🪄"
+},
+"Thibaut Courtois|Real Madrid": {
+"x": "Gigante",
+"xi": "🗼"
+},
+"Harry Kane|Bayern de Munique": {
+"x": "Goleador",
+"xi": "🎯"
+},
+"Lamine Yamal|FC Barcelona": {
+"x": "Cortou-bateu",
+"xi": "✂️"
+},
+"Michael Olise|Bayern de Munique": {
+"x": "Artista",
+"xi": "🎨"
+},
+"Rodri|FC Barcelona": {
+"x": "Patrão",
+"xi": "👔"
+},
+"Vitinha|PSG": {
+"x": "Motorzinho",
+"xi": "⚙️"
+},
+"Bruno Fernandes|Manchester United": {
+"x": "Magnífico",
+"xi": "💎"
+},
+"Gianluigi Donnarumma|Manchester City": {
+"x": "Pega-pênalti",
+"xi": "🧤"
+},
+"Khvicha Kvaratskhelia|PSG": {
+"x": "Kvaradona",
+"xi": "🌪️"
+},
+"Lionel Messi|Inter Miami": {
+"x": "E.T",
+"xi": "🛸"
+},
+"Nuno Mendes|PSG": {
+"x": "Foguete",
+"xi": "🚀"
+},
+"Vini Jr.|Real Madrid": {
+"x": "Malvadeza",
+"xi": "😈"
+},
+"Achraf Hakimi|PSG": {
+"x": "Foguete",
+"xi": "🚀"
+},
+"David Raya|Arsenal": {
+"x": "Milagreiro",
+"xi": "🙏"
+},
+"Gabriel|Arsenal": {
+"x": "Zagueiro-artilheiro",
+"xi": "⚽"
+},
+"João Neves|PSG": {
+"x": "Formiguinha",
+"xi": "🐜"
+},
+"Willian Pacho|PSG": {
+"x": "Pitbull",
+"xi": "🐕"
+},
+"Declan Rice|Arsenal": {
+"x": "Tanque de guerra",
+"xi": "🪖"
+},
+"Jan Oblak|Atlético de Madrid": {
+"x": "Paredão",
+"xi": "🧱"
+},
+"Joshua Kimmich|Bayern de Munique": {
+"x": "Coringa",
+"xi": "🃏"
+},
+"Luis Díaz|Bayern de Munique": {
+"x": "Liso",
+"xi": "💨"
+},
+"Raphinha|FC Barcelona": {
+"x": "Arco e flecha",
+"xi": "🏹"
+},
+"Virgil van Dijk|Liverpool": {
+"x": "Xerifão",
+"xi": "🤠"
+},
+"William Saliba|Arsenal": {
+"x": "Elegante",
+"xi": "🎩"
+},
+"Cristiano Ronaldo|Al-Nassr": {
+"x": "ROBOZÃO",
+"xi": "🤖"
+},
+"Kevin De Bruyne|SSC Napoli": {
+"x": "Garçom",
+"xi": "🍽️"
+},
+"Luka Modrić|Milan": {
+"x": "Gênio",
+"xi": "🧠"
+},
+"Bernardo Silva|Real Madrid": {
+"x": "Ilusionista",
+"xi": "🎭"
+},
+"De Gea|Fiorentina": {
+"x": "Gato",
+"xi": "🐈"
+},
+"Isco|Real Betis": {
+"x": "Malabarista",
+"xi": "🤹"
+},
+"N'Golo Kanté|Fenerbahçe": {
+"x": "Clone",
+"xi": "👥"
+},
+"Henrikh Mkhitaryan|Inter": {
+"x": "Professor",
+"xi": "📚"
+},
+"Ivan Perišić|PSV": {
+"x": "Pulmão",
+"xi": "🫁"
+},
+"Romelu Lukaku|Fenerbahçe": {
+"x": "Trator",
+"xi": "🚜"
+},
+"Iago Aspas|Celta": {
+"x": "Príncipe",
+"xi": "🤴"
+},
+"Kai Havertz|Arsenal": {
+"x": "Decisivo",
+"xi": "🏅"
+},
+"Koke|Atlético de Madrid": {
+"x": "Capitão",
+"xi": "©️"
+},
+"Manuel Neuer|Bayern de Munique": {
+"x": "Goleiro-líbero",
+"xi": "🧤"
+},
+"Wojciech Szczęsny|FC Barcelona": {
+"x": "Frieza",
+"xi": "🧊"
+},
+"Flaco López|Palmeiras": {
+"x": "Homem-gol",
+"xi": "⚽"
+},
+"Pedro|Flamengo": {
+"x": "Queixada",
+"xi": "🐗"
+},
+"Kaio Jorge|Cruzeiro": {
+"x": "Artilheiro",
+"xi": "🥅"
+},
+"Kevin Viveros|Athletico-PR": {
+"x": "Fera",
+"xi": "🦁"
+},
+"Samuel Lino|Flamengo": {
+"x": "Raio",
+"xi": "⚡"
+},
+"Lucas Paquetá|Flamengo": {
+"x": "Ousado",
+"xi": "😎"
+},
+"Jorge Carrascal|Flamengo": {
+"x": "Malandro",
+"xi": "🕺"
+},
+"Matheus Pereira|Cruzeiro": {
+"x": "Gelado",
+"xi": "🥶"
+},
+"Vitor Roque|Palmeiras": {
+"x": "Tigrinho",
+"xi": "🐯"
+},
+"Agustín Rossi|Flamengo": {
+"x": "Muralha",
+"xi": "🏰"
+},
+"Arrascaeta|Flamengo": {
+"x": "Regente",
+"xi": "🎼"
+},
+"Neymar|Santos": {
+"x": "Príncipe da Vila",
+"xi": "🤴"
+},
+"Gabigol|Santos": {
+"x": "Predestinado",
+"xi": "🔮"
+},
+"Jorginho|Flamengo": {
+"x": "Maestro",
+"xi": "🎻"
+},
+"Lucas Moura|São Paulo": {
+"x": "Herói",
+"xi": "🦸"
+},
+"Memphis Depay|Corinthians": {
+"x": "Showman",
+"xi": "🎤"
+},
+"Alex Sandro|Flamengo": {
+"x": "Cascudo",
+"xi": "🪨"
+},
+"Bruno Henrique|Flamengo": {
+"x": "Rei dos Clássicos",
+"xi": "🏟️"
+},
+"Felipe Anderson|Palmeiras": {
+"x": "Driblador",
+"xi": "🌀"
+},
+"Everton Ribeiro|Bahia": {
+"x": "Mágico",
+"xi": "🪄"
+},
+"Hulk|Fluminense": {
+"x": "Bomba",
+"xi": "💣"
+},
+"Thiago Silva|Fluminense": {
+"x": "Monstro",
+"xi": "🦍"
+},
+"Fábio|Fluminense": {
+"x": "Eterno",
+"xi": "♾️"
+},
+"Jesse Lingard|Corinthians": {
+"x": "Dançarino",
+"xi": "💃"
+},
+"Fagner|Cruzeiro": {
+"x": "Raçudo",
+"xi": "💪"
+},
+"Ganso|Fluminense": {
+"x": "Rei da pausa",
+"xi": "⏸️"
+},
+"Walter Kannemann|Grêmio": {
+"x": "Zagueirão",
+"xi": "🛡️"
+},
+"Diego Maradona|Argentina|1986": {
+"x": "D10S",
+"xi": "🙌"
+},
+"Pelé|Brasil|1970": {
+"x": "O REI",
+"xi": "👑"
+},
+"Lionel Messi|Argentina|2022": {
+"x": "E.T",
+"xi": "🛸"
+},
+"Franz Beckenbauer|Alemanha Ocidental|1974": {
+"x": "Der Kaiser",
+"xi": "🦅"
+},
+"Johan Cruyff|Holanda|1974": {
+"x": "Nummer 14",
+"xi": "👕"
+},
+"Kylian Mbappé|França|2026": {
+"x": "Tartaruga",
+"xi": "🐢"
+},
+"Ronaldo|Brasil|2002": {
+"x": "Fenômeno",
+"xi": "👽"
+},
+"Zinedine Zidane|França|1998": {
+"x": "Zizou",
+"xi": "💫"
+},
+"Kylian Mbappé|França|2022": {
+"x": "Tartaruga",
+"xi": "🐢"
+},
+"Lionel Messi|Argentina|2014": {
+"x": "E.T",
+"xi": "🛸"
+},
+"Pelé|Brasil|1958": {
+"x": "O REI",
+"xi": "👑"
+},
+"Erling Haaland|Noruega|2026": {
+"x": "Ciborgue",
+"xi": "🦾"
+},
+"Eusébio|Portugal|1966": {
+"x": "Pantera negra",
+"xi": "🐆"
+},
+"Ferenc Puskás|Hungria|1954": {
+"x": "Major galopante",
+"xi": "🎖️"
+},
+"Garrincha|Brasil|1962": {
+"x": "Alegria do povo",
+"xi": "🐦"
+},
+"Gerd Müller|Alemanha Ocidental|1970": {
+"x": "Bombardeiro",
+"xi": "💣"
+},
+"Gerd Müller|Alemanha Ocidental|1974": {
+"x": "Bombardeiro",
+"xi": "💣"
+},
+"Gianluigi Buffon|Itália|2006": {
+"x": "Gigi",
+"xi": "🧤"
+},
+"Harry Kane|Inglaterra|2026": {
+"x": "Furacão",
+"xi": "🌪️"
+},
+"Jude Bellingham|Inglaterra|2026": {
+"x": "Faz-tudo",
+"xi": "🧰"
+},
+"Ousmane Dembélé|França|2026": {
+"x": "Ambidestro máximo",
+"xi": "🦶"
+},
+"Rivaldo|Brasil|2002": {
+"x": "Paraíba",
+"xi": "🌵"
+},
+"Romário|Brasil|1994": {
+"x": "Baixinho",
+"xi": "🎯"
+},
+"Ronaldinho|Brasil|2006": {
+"x": "Bruxo",
+"xi": "🪄"
+},
+"Ronaldo|Brasil|1998": {
+"x": "Fenômeno",
+"xi": "👽"
+},
+"Zico|Brasil|1982": {
+"x": "Galinho",
+"xi": "🐓"
+},
+"Zinedine Zidane|França|2006": {
+"x": "Zizou",
+"xi": "💫"
+},
+"Lamine Yamal|Espanha|2026": {
+"x": "Cortou-bateu",
+"xi": "✂️"
+},
+"Lev Yashin|União Soviética|1958": {
+"x": "Aranha negra",
+"xi": "🕷️"
+},
+"Lothar Matthäus|Alemanha Ocidental|1990": {
+"x": "Motor alemão",
+"xi": "⚙️"
+},
+"Michel Platini|França|1982": {
+"x": "Le Roi",
+"xi": "♟️"
+},
+"Pedri|Espanha|2026": {
+"x": "Mágico",
+"xi": "🪄"
+},
+"Pelé|Brasil|1962": {
+"x": "O REI",
+"xi": "👑"
+},
+"Rodri|Espanha|2026": {
+"x": "Pianista",
+"xi": "🎹"
+},
+"Ronaldo|Brasil|2006": {
+"x": "Fenômeno",
+"xi": "👽"
+},
+"Andrés Iniesta|Espanha|2010": {
+"x": "Ilusionista",
+"xi": "🎩"
+},
+"Diego Maradona|Argentina|1990": {
+"x": "D10S",
+"xi": "🙌"
+},
+"Franz Beckenbauer|Alemanha Ocidental|1970": {
+"x": "Der Kaiser",
+"xi": "🦅"
+},
+"Garrincha|Brasil|1958": {
+"x": "Alegria do povo",
+"xi": "🐦"
+},
+"Harry Kane|Inglaterra|2018": {
+"x": "Furacão",
+"xi": "🌪️"
+},
+"Lionel Messi|Argentina|2026": {
+"x": "E.T",
+"xi": "🛸"
+},
+"Manuel Neuer|Alemanha|2014": {
+"x": "Goleiro-líbero",
+"xi": "🧤"
+},
+"Paolo Maldini|Itália|1994": {
+"x": "Il Capitano",
+"xi": "🛡️"
+},
+"Roberto Baggio|Itália|1994": {
+"x": "Rabo de cavalo",
+"xi": "🧘"
+},
+"Andrea Pirlo|Itália|2006": {
+"x": "Arquiteto",
+"xi": "📐"
+},
+"Antoine Griezmann|França|2018": {
+"x": "Grizou",
+"xi": "🎯"
+},
+"Arjen Robben|Holanda|2010": {
+"x": "Corta pra dentro",
+"xi": "✂️"
+},
+"Arjen Robben|Holanda|2014": {
+"x": "Corta pra dentro",
+"xi": "✂️"
+},
+"Bobby Moore|Inglaterra|1966": {
+"x": "The Captain",
+"xi": "©️"
+},
+"Bobby Moore|Inglaterra|1970": {
+"x": "The Captain",
+"xi": "©️"
+},
+"Bruno Fernandes|Portugal|2026": {
+"x": "Magnífico",
+"xi": "💎"
+},
+"Cristiano Ronaldo|Portugal|2018": {
+"x": "Robozão",
+"xi": "🤖"
+},
+"David Villa|Espanha|2010": {
+"x": "El Guaje",
+"xi": "🎯"
+},
+"Dennis Bergkamp|Holanda|1994": {
+"x": "Toque de seda",
+"xi": "🪶"
+},
+"Dennis Bergkamp|Holanda|1998": {
+"x": "Toque de seda",
+"xi": "🪶"
+},
+"Didi|Brasil|1954": {
+"x": "Folha seca",
+"xi": "🍂"
+},
+"Didi|Brasil|1958": {
+"x": "Folha seca",
+"xi": "🍂"
+},
+"Fabio Cannavaro|Itália|1998": {
+"x": "Muralha",
+"xi": "🧱"
+},
+"Fabio Cannavaro|Itália|2002": {
+"x": "Muralha",
+"xi": "🧱"
+},
+"Falcão|Brasil|1982": {
+"x": "Rei de Roma",
+"xi": "🏛️"
+},
+"Franz Beckenbauer|Alemanha Ocidental|1966": {
+"x": "Der Kaiser",
+"xi": "🦅"
+},
+"Gabriel Batistuta|Argentina|1994": {
+"x": "Batigol",
+"xi": "🔫"
+},
+"Gabriel Batistuta|Argentina|1998": {
+"x": "Batigol",
+"xi": "🔫"
+},
+"Gabriel Magalhães|Brasil|2026": {
+"x": "Zagueiro-artilheiro",
+"xi": "⚽"
+},
+"Gheorghe Hagi|Romênia|1994": {
+"x": "Maradona dos Cárpatos",
+"xi": "🎩"
+},
+"Gianluigi Buffon|Itália|2002": {
+"x": "Gigi",
+"xi": "🧤"
+},
+"Gordon Banks|Inglaterra|1966": {
+"x": "Defesa do século",
+"xi": "🙌"
+},
+"Gérson|Brasil|1970": {
+"x": "Canhotinha de ouro",
+"xi": "🎯"
+},
+"Harry Kane|Inglaterra|2022": {
+"x": "Furacão",
+"xi": "🌪️"
+},
+"Iker Casillas|Espanha|2010": {
+"x": "San Iker",
+"xi": "😇"
+},
+"Jairzinho|Brasil|1970": {
+"x": "Furacão",
+"xi": "🌪️"
+},
+"Just Fontaine|França|1958": {
+"x": "13 gols",
+"xi": "🎯"
+},
+"Kaká|Brasil|2006": {
+"x": "Arrancada",
+"xi": "💨"
+},
+"Kevin De Bruyne|Bélgica|2014": {
+"x": "KDB",
+"xi": "🍽️"
+},
+"Kevin De Bruyne|Bélgica|2018": {
+"x": "KDB",
+"xi": "🍽️"
+},
+"Kylian Mbappé|França|2018": {
+"x": "Tartaruga",
+"xi": "🐢"
+},
+"Leônidas|Brasil|1938": {
+"x": "Diamante negro",
+"xi": "💎"
+},
+"Lionel Messi|Argentina|2010": {
+"x": "E.T",
+"xi": "🛸"
+},
+"Lionel Messi|Argentina|2018": {
+"x": "E.T",
+"xi": "🛸"
+},
+"Lothar Matthäus|Alemanha Ocidental|1986": {
+"x": "Motor alemão",
+"xi": "⚙️"
+},
+"Luka Modrić|Croácia|2018": {
+"x": "Gênio",
+"xi": "🧠"
+},
+"Manuel Neuer|Alemanha|2010": {
+"x": "Goleiro-líbero",
+"xi": "🧤"
+},
+"Mario Kempes|Argentina|1978": {
+"x": "Matador",
+"xi": "🎯"
+},
+"Michel Platini|França|1978": {
+"x": "Le Roi",
+"xi": "♟️"
+},
+"Michel Platini|França|1986": {
+"x": "Le Roi",
+"xi": "♟️"
+},
+"Mohamed Salah|Egito|2018": {
+"x": "Rei do Egito",
+"xi": "🐫"
+},
+"Neymar|Brasil|2014": {
+"x": "Ousadia",
+"xi": "🌟"
+},
+"Neymar|Brasil|2018": {
+"x": "Ousadia",
+"xi": "🌟"
+},
+"Neymar|Brasil|2022": {
+"x": "Ousadia",
+"xi": "🌟"
+},
+"Nuno Mendes|Portugal|2026": {
+"x": "Foguete",
+"xi": "🚀"
+},
+"Ousmane Dembélé|França|2022": {
+"x": "Ambidestro máximo",
+"xi": "🦶"
+},
+"Paolo Maldini|Itália|1990": {
+"x": "Il Capitano",
+"xi": "🛡️"
+},
+"Paolo Maldini|Itália|1998": {
+"x": "Il Capitano",
+"xi": "🛡️"
+},
+"Paolo Rossi|Itália|1982": {
+"x": "Pablito",
+"xi": "🔥"
+},
+"Pelé|Brasil|1966": {
+"x": "O REI",
+"xi": "👑"
+},
+"Rivaldo|Brasil|1998": {
+"x": "Canhota de ouro",
+"xi": "✨"
+},
+"Rivellino|Brasil|1970": {
+"x": "Patada atômica",
+"xi": "💥"
+},
+"Rivellino|Brasil|1974": {
+"x": "Patada atômica",
+"xi": "💥"
+},
+"Roberto Carlos|Brasil|2002": {
+"x": "Patada",
+"xi": "💥"
+},
+"Rodri|Espanha|2022": {
+"x": "Patrão",
+"xi": "👔"
+},
+"Sándor Kocsis|Hungria|1954": {
+"x": "Cabeça de ouro",
+"xi": "🗿"
+},
+"Sócrates|Brasil|1982": {
+"x": "Doutor",
+"xi": "🩺"
+},
+"Thibaut Courtois|Bélgica|2018": {
+"x": "Gigante",
+"xi": "🗼"
+},
+"Thibaut Courtois|Bélgica|2026": {
+"x": "Gigante",
+"xi": "🗼"
+},
+"Thierry Henry|França|2002": {
+"x": "Titi",
+"xi": "🧊"
+},
+"Thierry Henry|França|2006": {
+"x": "Titi",
+"xi": "🧊"
+},
+"Thomas Müller|Alemanha|2014": {
+"x": "Raumdeuter",
+"xi": "📡"
+},
+"Toni Kroos|Alemanha|2014": {
+"x": "Passe perfeito",
+"xi": "📐"
+},
+"Vinícius Júnior|Brasil|2026": {
+"x": "Malvadeza",
+"xi": "😈"
+},
+"Vitinha|Portugal|2026": {
+"x": "Motorzinho",
+"xi": "⚙️"
+},
+"Xavi|Espanha|2006": {
+"x": "Relógio",
+"xi": "⏱️"
+},
+"Xavi|Espanha|2010": {
+"x": "Relógio",
+"xi": "⏱️"
+},
+"Zico|Brasil|1978": {
+"x": "Galinho",
+"xi": "🐓"
+},
+"Achraf Hakimi|Marrocos|2026": {
+"x": "Foguete",
+"xi": "🚀"
+},
+"Alcides Ghiggia|Uruguai|1950": {
+"x": "Maracanazo",
+"xi": "😶"
+},
+"Cafu|Brasil|1998": {
+"x": "Pendolino",
+"xi": "🚄"
+},
+"Carlos Alberto|Brasil|1970": {
+"x": "Capita",
+"xi": "©️"
+},
+"James Rodríguez|Colômbia|2014": {
+"x": "Chute de voleio",
+"xi": "💥"
+},
+"Luis Suárez|Uruguai|2014": {
+"x": "Pistolero",
+"xi": "🔫"
+},
+"Roberto Carlos|Brasil|1998": {
+"x": "Patada",
+"xi": "💥"
+},
+"Sergio Ramos|Espanha|2010": {
+"x": "Xerifão",
+"xi": "🤠"
+},
+"Thierry Henry|França|1998": {
+"x": "Titi",
+"xi": "🧊"
+},
+"Paul Pogba|França|2018": {
+"x": "Pogboom",
+"xi": "🧨"
+}
+}
