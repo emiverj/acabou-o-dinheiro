@@ -756,3 +756,10 @@ body[data-mode=copa]:not(.light) .seg.tiles button.on{background:color-mix(in sr
 .maxrow{display:flex;align-items:center;gap:12px;margin-top:22px;padding-top:14px;border-top:1px dashed var(--line2)}
 .maxrow .bid.max{flex:0 0 46%;max-width:220px;min-height:52px}
 .maxrow span{font-size:12px;color:var(--muted)}
+/* editor de formação entre as rodadas */
+.fe-ctrl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0 12px}
+.fe-ctrl .field{margin:0;min-width:160px}
+/* encaixe do estilo de jogo no elenco */
+.tactics .fit{display:block;font-style:normal;margin-top:4px;font-size:11px;font-weight:700}
+.tactics .fit i{font-style:normal}
+.fit-ok{color:var(--ok)} .fit-bad{color:var(--bad)} .fit-n{color:var(--muted)}

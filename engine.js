@@ -173,23 +173,61 @@ const gkId = team => team.lineup[FORMATIONS[team.formation].findIndex(s => s.pos
 /* Estilos de jogo (táticas): mexem nos setores, na posse e no ritmo da partida */
 export const TACTICS = {
   equilibrado: { n: 'Equilibrado', i: '⚖️', d: 'Sem mudanças: o time joga como foi montado.', a: 0, m: 0, df: 0, pos: 0, sh: 0, fo: 0, off: 0 },
-  ofensivo: { n: 'Ofensivo', i: '🔥', d: 'Ataque +3, defesa −3. Mais chutes, mais impedimentos.', a: 3, m: 0, df: -3, pos: 3, sh: 3, fo: 0, off: 0.8 },
-  retranca: { n: 'Retranca', i: '🧱', d: 'Defesa +3, ataque −3. Menos posse e menos chances para os dois lados.', a: -3, m: -1, df: 3, pos: -7, sh: -3, fo: 2, off: -0.4 },
-  posse: { n: 'Toque de bola', i: '🔁', d: 'Meio +2 e muito mais posse. Sofre contra o contra-ataque.', a: 0, m: 2, df: 0, pos: 9, sh: -1, fo: -2, off: -0.2 },
-  contra: { n: 'Contra-ataque', i: '⚡', d: 'Abre mão da bola. Ataque +3 contra quem é ofensivo ou de toque de bola.', a: 0, m: -1, df: 1, pos: -8, sh: 0, fo: 0, off: 0.6 },
-  pressao: { n: 'Pressão alta', i: '🏃', d: 'Meio +2 e ataque +1, defesa −1. Mais faltas e cartões; anula o toque de bola.', a: 1, m: 2, df: -1, pos: 3, sh: 1, fo: 4, off: 0.2 },
+  ofensivo: { n: 'Ofensivo', i: '🔥', d: 'Até +5 no ataque, defesa −3. Mais chutes, mais impedimentos.', a: 3, m: 0, df: -3, pos: 3, sh: 3, fo: 0, off: 0.8 },
+  retranca: { n: 'Retranca', i: '🧱', d: 'Até +5 na defesa, ataque −3. Menos posse e menos chances para os dois lados.', a: -3, m: -1, df: 3, pos: -7, sh: -3, fo: 2, off: -0.4 },
+  posse: { n: 'Toque de bola', i: '🔁', d: 'Até +3 no meio e muito mais posse. Sofre contra o contra-ataque.', a: 0, m: 2, df: 0, pos: 9, sh: -1, fo: -2, off: -0.2 },
+  contra: { n: 'Contra-ataque', i: '⚡', d: 'Abre mão da bola. Ataque forte contra quem é ofensivo ou de toque de bola.', a: 0, m: -1, df: 1, pos: -8, sh: 0, fo: 0, off: 0.6 },
+  pressao: { n: 'Pressão alta', i: '🏃', d: 'Meio e ataque mais fortes, defesa −1. Mais faltas e cartões; anula o toque de bola.', a: 1, m: 2, df: -1, pos: 3, sh: 1, fo: 4, off: 0.2 },
+  pontas: { n: 'Pelas pontas', i: '↔️', d: 'Jogo aberto pelos lados: ataque mais forte, defesa −1, mais cruzamentos e escanteios. Abre retrancas.', a: 2, m: 0, df: -1, pos: 1, sh: 2, fo: 0, off: 0.3 },
+  aereo: { n: 'Jogo aéreo', i: '✈️', d: 'Bola longa na área: ataque mais forte, meio −2 e muito mais gols de cabeça. Passa por cima da retranca.', a: 2, m: -2, df: 0, pos: -4, sh: 1, fo: 1, off: 0.3 },
 };
 export const TACTIC_NAMES = Object.keys(TACTICS);
 const tac = t => TACTICS[t.tactic] || TACTICS.equilibrado;
+/* Encaixe do estilo no elenco: cada estilo depende de atributos de quem está em campo.
+   Mede o quanto esses atributos estão acima (ou abaixo) do normal para a posição e o OVR de cada jogador, na base do modo.
+   Resultado de −1 (não combina) a +1 (combina muito). Os ganhos do estilo crescem com o encaixe; os custos ficam inteiros. */
+const ATK = new Set(['ST', 'CF', 'LW', 'RW', 'CAM']), MID = new Set(['CM', 'CAM', 'CDM', 'LM', 'RM']), DEFS = new Set(['CB', 'LB', 'RB', 'LWB', 'RWB', 'CDM']);
+const WIDE = new Set(['LW', 'RW', 'LM', 'RM']), FBK = new Set(['LB', 'RB', 'LWB', 'RWB']);
+export const STYLE_FIT = {
+  ofensivo: { who: x => ATK.has(x.pos), at: [1, 3], txt: 'finalização e drible do ataque' },
+  retranca: { who: x => DEFS.has(x.pos), at: [4, 5], txt: 'marcação e físico da defesa' },
+  posse: { who: x => MID.has(x.pos), at: [2, 3], txt: 'passe e drible do meio-campo' },
+  contra: { who: x => ATK.has(x.pos) || WIDE.has(x.pos), at: [0], txt: 'velocidade do ataque' },
+  pressao: { who: x => x.pos !== 'GK', at: [5, 0], txt: 'físico e fôlego do time todo' },
+  pontas: { who: x => WIDE.has(x.pos) || FBK.has(x.pos), at: [0, 3, 2], txt: 'velocidade e drible de pontas e laterais' },
+  aereo: { who: x => x.pos === 'ST' || x.pos === 'CF' || x.pos === 'CB', at: [5, 1], trait: ['Cabeceador', 'Dono do alto', 'Pivô'], txt: 'físico e cabeceio de atacantes e zagueiros' },
+};
+let _bl = null, _blFor = null;
+function attrBaseline() {
+  if (_blFor === PLAYERS) return _bl;
+  const acc = {};
+  PLAYERS.forEach(p => { if (p.p === 'GK' || !p.s) return; const a = acc[p.p] = acc[p.p] || { n: 0, s: [0, 0, 0, 0, 0, 0] }; a.n++; p.s.forEach((v, i) => { a.s[i] += v - p.o; }); });
+  _bl = {}; for (const k in acc) _bl[k] = acc[k].s.map(v => v / acc[k].n);
+  // desvio padrão de cada atributo na base (para o encaixe valer igual nos três modos)
+  const sd = [0, 0, 0, 0, 0, 0], n = [0, 0, 0, 0, 0, 0];
+  PLAYERS.forEach(p => { if (p.p === 'GK' || !p.s || !_bl[p.p]) return; p.s.forEach((v, i) => { const d = v - p.o - _bl[p.p][i]; sd[i] += d * d; n[i]++; }); });
+  _bl._sd = sd.map((v, i) => Math.max(1.5, Math.sqrt(v / Math.max(1, n[i]))));
+  _blFor = PLAYERS; return _bl;
+}
+// quanto o atributo i do jogador está acima do normal para a posição e o OVR dele (em desvios padrão)
+const attrDev = (p, i) => { const B = attrBaseline(), b = B[p.p]; return b && p.s ? ((p.s[i] - p.o) - b[i]) / B._sd[i] : 0; };
+export function styleFit(state, team, k) {
+  const F = STYLE_FIT[k]; if (!F || !team.lineup || team.lineup.length !== 11 || team.lineup.some(x => x == null)) return 0;
+  const xs = onField(state, team).filter(x => x.p && x.pos !== 'GK' && F.who(x)); if (!xs.length) return -1;
+  let sum = 0, n = 0;
+  xs.forEach(x => { F.at.forEach(i => { sum += attrDev(x.p, i); n++; }); (F.trait || []).forEach(tr => { if (hasK(x.p, tr)) sum += 1.5; }); });
+  let f = Math.max(-1, Math.min(1, sum / n / 0.7));
+  if (k === 'pontas' && !xs.some(x => WIDE.has(x.pos))) f = Math.min(f, -0.6); // sem pontas na formação, o estilo não funciona
+  return f;
+}
 // bots (e quem está no piloto automático) escolhem o estilo olhando o adversário
 function botTactics(state, h, a) {
   for (const [t, o] of [[h, a], [a, h]]) {
     if (!botLike(t)) continue;
     const s = strength(state, t), x = strength(state, o), gap = (s.a + s.m + s.d) - (x.a + x.m + x.d);
-    if (Math.random() < 0.25) t.tactic = pick(TACTIC_NAMES);
-    else if (gap > 6) t.tactic = s.m >= x.m ? pick(['posse', 'ofensivo']) : 'ofensivo';
-    else if (gap < -6) t.tactic = (o.tactic === 'ofensivo' || o.tactic === 'posse') ? 'contra' : pick(['retranca', 'contra']);
-    else t.tactic = pick(['equilibrado', 'pressao', 'equilibrado']);
+    const opts = gap > 6 ? ['ofensivo', 'posse', 'pontas', 'pressao', 'aereo'] : gap < -6 ? ['retranca', 'contra', 'aereo', 'equilibrado'] : ['equilibrado', 'pressao', 'posse', 'pontas', 'contra', 'aereo', 'ofensivo'];
+    const score = k => (k === 'equilibrado' ? 0.15 : styleFit(state, t, k)) + rnd(0, 0.35) + (k === 'contra' && (o.tactic === 'ofensivo' || o.tactic === 'posse') ? 0.4 : 0) + ((k === 'pontas' || k === 'aereo') && o.tactic === 'retranca' ? 0.25 : 0);
+    t.tactic = opts.reduce((b, k) => score(k) > score(b) ? k : b, opts[0]);
   }
 }
 // força de cada setor já com o estilo de jogo e o duelo de estilos aplicados
@@ -197,9 +235,11 @@ export function matchup(state, h, a) {
   const sh = { ...strength(state, h) }, sa = { ...strength(state, a) };
   const apply = (s, t, o) => {
     const T = tac(t), O = tac(o);
-    s.a += T.a; s.m += T.m; s.d += T.df;
-    if (t.tactic === 'contra' && (o.tactic === 'ofensivo' || o.tactic === 'posse')) s.a += 3;
-    if (t.tactic === 'pressao' && o.tactic === 'posse') s.m += 2;
+    const mult = 1 + 0.65 * styleFit(state, t, t.tactic), up = v => v > 0 ? v * mult : v; // ganho conforme o encaixe, custo inteiro
+    s.a += up(T.a); s.m += up(T.m); s.d += up(T.df);
+    if (t.tactic === 'contra' && (o.tactic === 'ofensivo' || o.tactic === 'posse' || o.tactic === 'pontas')) s.a += 3 * mult;
+    if (t.tactic === 'pressao' && o.tactic === 'posse') s.m += 2 * mult;
+    if ((t.tactic === 'pontas' || t.tactic === 'aereo') && o.tactic === 'retranca') s.a += 1.5 * mult;
     if (O && o.tactic === 'retranca' && t.tactic === 'posse') s.a -= 1;
   };
   apply(sh, h, a); apply(sa, a, h);
@@ -221,7 +261,8 @@ export function playMatch(state, h, a, knockout, neutral) {
     const g = poisson(L[side]);
     for (let i = 0; i < g; i++) {
       const r = Math.random(); let kind = 'jogada';
-      if (r < 0.09) kind = 'penalti'; else if (r < 0.15) kind = 'falta'; else if (r < 0.31) kind = 'cabeca';
+      const hd = team.tactic === 'aereo' ? 0.45 : team.tactic === 'pontas' ? 0.37 : 0.31; // jogo aéreo e cruzamentos: mais gols de cabeça
+      if (r < 0.09) kind = 'penalti'; else if (r < 0.15) kind = 'falta'; else if (r < hd) kind = 'cabeca';
       let p, as = null;
       if (kind === 'penalti' || kind === 'falta') { const tk = takers(state, team); p = (kind === 'falta' ? tk.find(x => getP(state, x.id).pk) || tk.find(x => hasK(getP(state, x.id), 'Cobrador')) || tk[0] : tk[0]).id; }
       else p = pickScorer(state, team, kind === 'cabeca');
@@ -322,6 +363,9 @@ function whyText(state, m, h, a, sh, sa) {
     if (sp && sp >= Math.abs(m.hg - m.ag)) opts.push([3.5, `A bola parada decidiu: ${sp} ${sp > 1 ? 'gols' : 'gol'} do ${nm(winS)} em falta, pênalti ou cabeçada.`]);
     if (m.ev.some(e => e.t === 'vermelho' && e.s === l)) opts.push([4, `O cartão vermelho complicou a vida do ${nm(l)}.`]);
     if (T[winS].tactic === 'contra' && st[winS].pos < 45) opts.push([4.5, `O contra-ataque funcionou: o ${nm(winS)} venceu com só ${st[winS].pos}% de posse.`]);
+    const wt = T[winS].tactic, lt = T[l].tactic, wf = styleFit(state, T[winS], wt), lf = styleFit(state, T[l], lt);
+    if (wt !== 'equilibrado' && wf >= 0.3) opts.push([4.4, `O estilo encaixou: o ${nm(winS)} jogou no ${TACTICS[wt].n.toLowerCase()} e tem ${STYLE_FIT[wt].txt} para isso.`]);
+    if (lt !== 'equilibrado' && lf <= -0.3) opts.push([4.1, `O ${nm(l)} apostou no ${TACTICS[lt].n.toLowerCase()}, mas o elenco não combina com esse estilo (falta ${STYLE_FIT[lt].txt}).`]);
     if (W.a + W.m + W.d < Lo.a + Lo.m + Lo.d - 4) opts.push([4.2, `Zebra! No papel o ${nm(l)} era mais forte, mas o ${nm(winS)} foi mais eficiente.`]);
     if (!opts.length) opts.push([1, `Jogo parelho, decidido nos detalhes a favor do ${nm(winS)}.`]);
   } else {
@@ -795,7 +839,7 @@ export function endAuction(state) {
   state.phase = 'trades'; state.tr = { offers: [], deals: [], count: {}, seq: 0, marketOnly: !state.settings.trades };
   state.teams.forEach(t => { t.ready = botLike(t); });
 }
-export const PREP_MS = 300000, TRADE_LIMIT = 3;
+export const PREP_MS = 300000, TRADE_LIMIT = 3, LINEUP_MIN_MS = 45000;
 
 // modo Copa: arrematou uma versão de um jogador, as outras versões dele saem do pote
 function lockVersions(state, p) { if (p && p.id != null) state.pool = state.pool.filter(i => PLAYERS[i].id !== p.id); }
@@ -896,11 +940,11 @@ export function tickTrades(state, now) {
     }
   }
   const humans = state.teams.filter(t => !botLike(t));
-  if (now > state.prepEndsAt) { startCup(state); return true; }
-  if (humans.every(t => t.ready)) {
+  // fim da janela (todos prontos ou tempo esgotado): sempre passa pela tela de tática, com pelo menos 45 s para escalar
+  if (now > state.prepEndsAt || humans.every(t => t.ready)) {
     state.phase = 'lineup'; state.tr.offers = [];
     state.teams.forEach(t => { t.ready = botLike(t); if (botLike(t)) { const b = bestFormation(state, t.squad); t.formation = b.name; t.lineup = b.lineup; } });
-    state.lineupEndsAt = state.prepEndsAt; return true;
+    state.lineupEndsAt = Math.max(state.prepEndsAt, now + LINEUP_MIN_MS); return true;
   }
   return changed;
 }
