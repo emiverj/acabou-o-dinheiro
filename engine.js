@@ -136,11 +136,8 @@ export const fieldCount = (state, t) => t.squad.filter(id => !isGK(getP(state, i
 export function needFor(state, t, p) { return isGK(p) ? !hasGK(state, t) : fieldCount(state, t) < 10; }
 export const maxAllowed = t => slots(t) > 0 ? t.budget - (slots(t) - 1) : 0;
 // piso para craques: 85+ = 5% do orçamento, 89+ = 10% (ex.: R$ 5 e R$ 10 com R$ 100)
-export function floorFor(state, p) {
-  const b = state.settings.budget;
-  const [t1, t2] = tiersOf(state.settings.base);
-  return p.o >= t2 ? Math.round(b * 0.10) : p.o >= t1 ? Math.round(b * 0.05) : 1;
-}
+// lance mínimo de um jogador: R$ 1 para todos (o piso dos craques foi tirado a pedido da galera)
+export function floorFor(state, p) { return 1; }
 // menor lance válido deste time no lote atual
 export function minBid(state, t) {
   const lot = state.lot, p = PLAYERS[lot.pid];

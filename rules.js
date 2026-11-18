@@ -1,12 +1,12 @@
 // LIVRO DE REGRAS — mantenha sempre igual às regras do engine.js.
 // Toda mudança de regra no jogo precisa ser refletida aqui.
-import { FORMATION_NAMES, SPEEDS, floorFor } from './engine.js';
+import { FORMATION_NAMES, SPEEDS } from './engine.js';
 import { tiersOf, specialOf } from './db.js';
 
 export function rulesHTML(settings) {
   const s = settings || { base: 'europa', trades: false, budget: 100, speed: 'normal', format: 'liga' };
   const b = s.budget, sp = SPEEDS[s.speed] || SPEEDS.normal;
-  const [t1, t2] = tiersOf(s.base), f85 = floorFor({ settings: s }, { o: t1 }), f89 = floorFor({ settings: s }, { o: t2 });
+  const [t1] = tiersOf(s.base);
   const fmtName = { liga: 'pontos corridos', ligafinal: 'pontos corridos + finais', mata: 'mata-mata', grupos: 'grupos + mata-mata' }[s.format] || 'pontos corridos';
   return `
   <ol class="rulebook">
@@ -21,7 +21,6 @@ export function rulesHTML(settings) {
     <li><b>O leilão.</b> Um jogador vai ao martelo por vez. O lance inicial é R$ 1 e cada novo lance precisa ser maior que o anterior. O lote tem ${sp.open}s e todo lance devolve o relógio para pelo menos ${sp.reset}s. Se ninguém der lance nos primeiros <b>3 segundos</b>, o relógio passa a correr no dobro da velocidade. Quando o tempo acaba, o maior lance leva: dou-lhe uma, dou-lhe duas, dou-lhe três. O botão <b>Máx.</b> (e um lance digitado de metade do seu teto ou mais) pede confirmação: toque de novo em até 3 segundos para valer.</li>
     <li><b>Ordem do leilão.</b> ${s.order === 'setor' ? 'Esta sala usa o leilão <b>por setor</b>' : 'Na ordem <b>sorteada</b>, os jogadores vão ao martelo em qualquer ordem. Quem cria a sala também pode escolher o leilão <b>por setor</b>'}: primeiro só goleiros, depois defensores, meio-campistas e atacantes. Cada setor dura até todos os times completarem aquela linha da formação (ou acabarem os jogadores dela no pote); o que faltar no fim sai livre.</li>
     <li><b>Reserva obrigatória.</b> Você precisa guardar <b>R$ 1 para cada vaga ainda aberta</b>. Por isso o seu teto num lote é o saldo menos a reserva. O botão <b>Máx.</b> dá exatamente esse valor.</li>
-    <li><b>Lance mínimo dos craques.</b> Jogadores <b>${t1}+</b> não saem por menos de <b>R$ ${f85}</b> e jogadores <b>${t2}+</b> não saem por menos de <b>R$ ${f89}</b>. Quem não tem esse valor disponível pode dar lance até o próprio teto, mas qualquer técnico com dinheiro para o mínimo precisa cobrir pelo menos o mínimo.</li>
     <li><b>Martelo na hora.</b> Se nenhum outro técnico tiver dinheiro para cobrir o lance atual, o lote fecha na mesma hora: o jogador vai para quem está na frente. Se ninguém tiver dinheiro nem para o lance inicial, ele sai do leilão.</li>
     <li><b>Passar.</b> Se todos os técnicos que podem disputar um lote passarem, ele é resolvido na hora entre os bots, ou sai do leilão se ninguém quiser.</li>
     <li><b>Vagas em branco.</b> Quem terminar o leilão com vagas sobrando recebe, por R$ 0, os <b>piores jogadores que sobraram</b> na posição que falta, e eles jogam <b>fora de ritmo (−5 em tudo)</b>. Se não sobrar ninguém, entra um Cria da Base, bem mais fraco.</li>
