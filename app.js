@@ -28,7 +28,7 @@ const saveMe = () => { try { localStorage.setItem('acabou-me', JSON.stringify({ 
 let ch = null, state = null, isHost = false, offset = 0, lastSeen = 0, code = null;
 let loopIv = null, hbIv = null, joinIv = null, lobbyCh = null, view = null, lastStampKey = '';
 const rooms = new Map();
-const ui = { asel: null, settings: { base: 'europa', order: 'livre', trades: '0', budget: '100', max: '8', format: 'liga', speed: 'normal', hide: '0', pub: '1' }, sel: null, draft: null };
+const ui = { asel: null, settings: { base: 'europa', order: 'livre', trades: '0', budget: '100', max: '8', format: 'liga', speed: 'normal', hide: '0', pub: '1', chem: '0', cards: '1' }, sel: null, draft: null };
 
 const P = id => E.getP(state, id);
 // nome com o ano da Copa quando a carta é uma versão (modo Copa do Mundo): Pelé '70
@@ -225,6 +225,9 @@ function handleAction(a) {
     case 'offer': if (t && state.phase === 'trades') { const err = E.makeOffer(state, a.id, a.to, a.give, a.get, a.cash, now); if (err) note(a.id, err); publish(); } break;
     case 'offerResp': if (t && state.phase === 'trades') { const err = E.respondOffer(state, a.oid, a.id, !!a.ok, now); if (err) note(a.id, err); publish(); } break;
     case 'offerCancel': if (t && state.phase === 'trades') { E.cancelOffer(state, a.oid, a.id); publish(); } break;
+    case 'scout': if (t) { const err = E.useScout(state, a.id, a.lotNo); if (err) note(a.id, err); publish(); } break;
+    case 'lockin': if (t) { const err = E.useLock(state, a.id, +a.pid); if (err) note(a.id, err); publish(); } break;
+    case 'lockcancel': if (t) { E.cancelLock(state, a.id); publish(); } break;
     case 'sign': if (t && state.phase === 'trades') { const err = E.signFree(state, a.id, a.pid, a.release, now); if (err) note(a.id, err); publish(); } break;
   }
 }
@@ -296,7 +299,7 @@ async function createRoom() {
   if (!readNames()) return;
   code = genCode();
   const s = ui.settings;
-  const settings = { budget: +s.budget, max: +s.max, format: s.format, speed: s.speed, hideOvr: s.hide === '1', pub: s.pub === '1', base: s.base, order: s.order, trades: s.trades === '1' };
+  const settings = { budget: +s.budget, max: +s.max, format: s.format, speed: s.speed, hideOvr: s.hide === '1', pub: s.pub === '1', base: s.base, order: s.order, trades: s.trades === '1', chem: s.chem === '1', cards: s.cards === '1' };
   setBase(settings.base);
   state = E.newRoomState(code, me, settings); state.creatorId = me.id; isHost = true;
   try { ch = await openChannel('room-' + code, onMsg); } catch (e) { toast(e.message); state = null; isHost = false; return; }
@@ -356,6 +359,7 @@ function render() {
   // mudou de fase (vale também para o anfitrião, inclusive na 2ª partida da mesma sala): rascunho de escalação novo
   if (ui.lastPhase !== state.phase) { ui.lastPhase = state.phase; ui.sel = null; ui.draft = null; }
   // editor de formação aberto quando a rodada começa ao vivo (ou o campeonato acaba): fecha
+  if ($('#modal .lock-list') && !(state.phase === 'cup' && state.cup && !state.cup.live)) $('#modal').innerHTML = '';
   if ($('#modal .fe') && !(state.phase === 'cup' && state.cup && !state.cup.live && !state.cup.done)) { $('#modal').innerHTML = ''; ui.fe = null; }
   const fn = { lobby: renderLobby, auction: renderAuction, trades: renderTrades, lineup: renderLineup, cup: renderCup, end: renderEnd }[state.phase];
   fn && fn();
@@ -366,6 +370,8 @@ function seg(key, opts, cls) {
 }
 const SVG = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
 const ICON = {
+  card: SVG('<rect x="5" y="3" width="11" height="16" rx="2"/><path d="M9 21h10a2 2 0 0 0 2-2V7"/><path d="M10.5 8.5l1 2 2 .3-1.5 1.4.4 2-1.9-1-1.9 1 .4-2-1.5-1.4 2-.3z"/>'),
+  link: SVG('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'),
   liga: SVG('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16"/>'),
   mata: SVG('<path d="M3 5h5v4H3zM3 15h5v4H3zM8 7h3v10H8M11 12h4M15 10h6v4h-6z"/>'),
   ligafinal: SVG('<rect x="2" y="4" width="9" height="16" rx="1.5"/><path d="M2 9h9M2 14h9M11 7h3v10h-3M14 12h3"/><path d="M17 9h5v6h-5z"/>'),
@@ -414,6 +420,8 @@ function renderHome() {
         <div class="field"><label>Overall no leilão</label>${seg('hide', [['0','Visível',miniCard('88')],['1','Escondido',miniCard('?')]], 'tiles')}</div>
       </div>
       <div class="field"><label>Janela de trocas</label>${seg('trades', [['0','Desligada',ICON.lock2,'Só o mercado de sobras depois do leilão'],['1','Ligada',ICON.swap,'Trocas entre técnicos e mercado de sobras']], 'tiles row')}</div>
+      <div class="field"><label>Cartas coringa</label>${seg('cards', [['1','Ligadas',ICON.card,'Olheiro no leilão (5×) e Lock In no campeonato (1×)'],['0','Desligadas',ICON.lock2,'Só o leilão e o campeonato']], 'tiles row')}</div>
+      <div class="field"><label>Fechamento</label>${seg('chem', [['0','Desligado',ICON.lock2,'Cada jogador rende só pelo que é'],['1','Ligado',ICON.link,'Jogadores do mesmo clube, seleção ou país se fortalecem juntos']], 'tiles row')}</div>
       <div class="field"><label>Sala</label>${seg('pub', [['1','Pública',ICON.pub,'Aparece em "Salas abertas"'],['0','Privada',ICON.priv,'Só entra quem tem o código']], 'tiles row')}</div>
       <button class="cta" id="create">Criar sala</button>
     </div>
@@ -495,7 +503,7 @@ function renderLobby() {
   $('#rulebook').onclick = showRules;
   $('#lobby-record').innerHTML = recordHTML();
   const nT = state.teams.length, poolEst = E.buildPool(nT, s.order === 'setor').length;
-  $('#rules').innerHTML = `<b>Pote desta partida:</b> ${poolEst} jogadores sorteados para ${nT * 11} vagas.<br><b>Regras da sala:</b> base ${BASE_NAMES[s.base] || 'Europa'} · orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', ligafinal:'pontos corridos + finais', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · ${s.trades ? 'com janela de trocas · ' : ''}leilão ${s.order === 'setor' ? 'por setor, ' : ''}${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
+  $('#rules').innerHTML = `<b>Pote desta partida:</b> ${poolEst} jogadores sorteados para ${nT * 11} vagas.<br><b>Regras da sala:</b> base ${BASE_NAMES[s.base] || 'Europa'} · orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', ligafinal:'pontos corridos + finais', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · ${s.trades ? 'com janela de trocas · ' : ''}${s.chem ? 'com fechamento · ' : ''}${s.cards ? 'com cartas coringa · ' : ''}leilão ${s.order === 'setor' ? 'por setor, ' : ''}${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
   $('#plist').innerHTML = state.teams.map(t => `<div class="prow2">
       <span class="dot" style="background:${t.color};width:14px;height:14px"></span>
       <div><div class="nm">${esc(t.name)}${t.id === me.id ? ' (você)' : ''}</div><small>${esc(t.coach)} · ${esc(t.formation)}${t.bot ? ' · ' + esc(t.pers.n) : ''}${statusTag(t)}</small></div>
@@ -524,15 +532,30 @@ function renderLobby() {
 }
 
 /* ---------- campo ---------- */
+// Fechamento: linhas entre jogadores ligados (cheia = clube/mesma Copa, tracejada = país/seleção) e o bônus de cada um
+function chemSVG(lineup, formation) {
+  if (!E.chemOn(state) || !lineup) return '';
+  const slots = E.FORMATIONS[formation], ch = E.chemFor(state, { formation, lineup });
+  return `<svg class="chem-lines" viewBox="0 0 100 100" preserveAspectRatio="none">${(E.FORMATION_LINKS[formation] || []).map(([i, j]) => {
+    const a = slots[i], b = slots[j], l = ch.links.find(x => (x.i === i && x.j === j) || (x.i === j && x.j === i));
+    return `<line x1="${a.x}" y1="${100 - a.y}" x2="${b.x}" y2="${100 - b.y}" class="${l ? (l.w > 1 ? 'strong' : 'weak') : 'none'}">${l ? `<title>${esc(l.txt)}</title>` : ''}</line>`; }).join('')}</svg>`;
+}
+function chemHint(mt, p) {
+  if (!E.chemOn(state) || !mt || !p) return '';
+  const L = mt.squad.map(id => ({ q: P(id), l: E.chemLink(p, P(id)) })).filter(x => x.l);
+  if (!L.length) return '';
+  return `<div class="chem-hint">🔗 <b>Liga com</b> (se jogarem lado a lado) ${L.slice(0, 4).map(x => `${esc(dn(x.q))} <small>(${esc(x.l.k === 'pais' ? x.l.txt : x.l.k === 'copa' ? x.l.txt : 'clube')})</small>`).join(', ')}${L.length > 4 ? ` e mais ${L.length - 4}` : ''}</div>`;
+}
 function pitchHTML(lineup, formation, o) {
   const slots = E.FORMATIONS[formation];
-  return `<div class="field-pitch">${slots.map((s, i) => {
+  const ch = E.chemOn(state) && lineup ? E.chemFor(state, { formation, lineup }) : null;
+  return `<div class="field-pitch">${chemSVG(lineup, formation)}${ch ? `<div class="chem-total" title="Fechamento: soma dos bônus dos titulares">🔗 Fechamento +${ch.total} <small>${ch.links.length} ${ch.links.length === 1 ? 'ligação' : 'ligações'}</small></div>` : ''}${slots.map((s, i) => {
     const id = lineup[i];
     if (id == null) return `<div class="fslot empty ${o.click ? 'click' : ''} ${o.sel === i ? 'sel' : ''}" data-i="${i}" style="left:${s.x}%;bottom:${s.y}%"><div class="sp">${E.POS_PT[s.pos]}</div><div class="sn">—</div></div>`;
     const p = P(id); const lv = E.fitLevel(p, s.pos);
     const sub = o.prices ? (o.prices[id] != null ? fmt(o.prices[id]) : '') : '';
     return `<div class="fslot ${lv} ${o.click ? 'click' : ''} ${o.sel === i ? 'sel' : ''}" data-i="${i}" style="left:${s.x}%;bottom:${s.y}%">
-      <div class="sp">${E.POS_PT[s.pos]}${p.p !== s.pos ? ' · ' + posLabel(p) : ''}${o.ovr ? ' · ' + p.o : ''}</div><div class="sn">${esc(dn(p))}</div>${sub ? `<div class="sv">${sub}</div>` : ''}${p.pen ? '<div class="sv pen">fora de ritmo</div>' : ''}</div>`;
+      <div class="sp">${E.POS_PT[s.pos]}${p.p !== s.pos ? ' · ' + posLabel(p) : ''}${o.ovr ? ' · ' + p.o : ''}</div><div class="sn">${esc(dn(p))}</div>${sub ? `<div class="sv">${sub}</div>` : ''}${p.pen ? '<div class="sv pen">fora de ritmo</div>' : ''}${ch && ch.bonus[i] ? `<div class="chb">🔗+${ch.bonus[i]}</div>` : ''}</div>`;
   }).join('')}</div>`;
 }
 function previewAssign(team) {
@@ -547,11 +570,12 @@ function previewAssign(team) {
 }
 
 /* ---------- LEILÃO ---------- */
-function cardHTML(p, hide) {
+function cardHTML(p, hide, scout) {
   const [t1, t2] = tiersOf(state.settings.base); const tier = hide ? 'neutral' : p.o >= t2 ? 'elite' : p.o >= t1 ? 'gold' : 'silver';
   const alt = p.a.length ? p.a.map(a => E.POS_PT[a] || a).join(' · ') : 'só ' + posLabel(p);
   const hw = p.h ? `${(p.h / 100).toFixed(2).replace('.', ',')} m${p.w ? ` · ${p.w} kg` : ''}` : '—';
-  return `<div class="pcard ${tier}">
+  const rep = scout ? `<div class="pc-scout"><b>🕵️ Relatório do olheiro</b>${p.p === 'GK' ? '<span>Goleiro: o overall é o que conta</span>' : `<div class="ps-grid">${['RIT', 'FIN', 'PAS', 'DRI', 'DEF', 'FIS'].map((k, i) => `<span><i>${k}</i>${p.s[i]}</span>`).join('')}</div>`}</div>` : '';
+  return `<div class="pcard ${tier}">${rep}
     <div class="pc-head"><div><div class="pc-ovr${hide ? ' q' : ''}">${hide ? '?' : p.o}</div><div class="pc-pos">${posLabel(p)}</div></div><div class="pc-nat">${flagImg(p)}<span>${esc(p.c)}</span></div></div>
     <div class="pc-shirt">${jerseySVG(p.t, p.n)}</div>
     <div class="pc-name">${esc(p.n)}</div>
@@ -578,7 +602,7 @@ function renderAuction() {
     <div class="sectors" id="a-sectors"></div>
     <div class="agrid">
       <div class="lot" id="lot">
-        <div class="lot-top"><span class="lotno" id="l-no"></span><span class="lotno" id="l-floor"></span></div>
+        <div class="lot-top"><span class="lotno" id="l-no"></span><span class="lotno" id="l-floor"></span><button class="scout-btn" id="l-scout" style="display:none">🕵️ Olheiro</button></div>
         <div class="lot-body">
           <div id="l-card"></div>
           <div class="lot-right">
@@ -624,6 +648,7 @@ function renderAuction() {
     app.querySelectorAll('.bid[data-inc]').forEach(b => b.onclick = () => bidInc(+b.dataset.inc));
     $('#l-max').onclick = maxBid;
     $('#l-pass').onclick = () => state.lot && act({ type: 'pass', lotNo: state.lot.no });
+    $('#l-scout').onclick = () => state.lot && act({ type: 'scout', lotNo: state.lot.no });
     $('#l-send').onclick = () => { const v = parseInt($('#l-custom').value, 10); if (v > 0 && confirmBig(v, 'send')) $('#l-custom').value = ''; };
     $('#l-custom').addEventListener('keydown', e => { if (e.key === 'Enter') $('#l-send').click(); });
     $('#ff').onclick = () => { if (isHost) { E.skipToEnd(state, Date.now()); publish(); } };
@@ -639,8 +664,14 @@ function renderAuction() {
     const p = PLAYERS[lot.pid];
     $('#l-no').textContent = 'LOTE ' + lot.no;
     const fl = E.floorFor(state, p);
-    $('#l-floor').textContent = fl > 1 ? `lance mínimo R$ ${fl}` : '';
-    if (lastCardNo !== lot.no) { lastCardNo = lot.no; $('#l-card').innerHTML = cardHTML(p, state.settings.hideOvr); fitCard($('#l-card')); }
+    { const mt1 = myTeam(), nL = E.chemOn(state) && mt1 ? mt1.squad.filter(id => E.chemLink(p, P(id))).length : 0;
+      $('#l-floor').textContent = nL ? `🔗 liga com ${nL} do seu time` : fl > 1 ? `lance mínimo R$ ${fl}` : '';
+      $('#l-floor').classList.toggle('chem-on', !!nL); }
+    const sc = E.cardsOn(state) && E.scouted(state, me.id, lot.no), ck = lot.no + (sc ? 's' : '');
+    if (lastCardNo !== ck) { lastCardNo = ck; $('#l-card').innerHTML = cardHTML(p, state.settings.hideOvr && !sc, sc); fitCard($('#l-card')); }
+    { const b = $('#l-scout'), mt2 = myTeam(), on = E.cardsOn(state) && !!mt2;
+      b.style.display = on ? '' : 'none';
+      if (on) { const left = E.scoutLeft(state, me.id); b.textContent = sc ? '🕵️ Relatório aberto' : `🕵️ Olheiro · ${left}`; b.disabled = sc || left <= 0 || lot.status !== 'open'; b.classList.toggle('used', sc); } }
     $('#l-price').textContent = fmt(lot.leader ? lot.price : 0);
     const L = lot.leader && teamById(lot.leader);
     $('#l-leader').innerHTML = L ? `<i class="dot" style="background:${L.color}"></i>${esc(L.name)}${L.id === me.id ? ' (você)' : ''}` : '<span style="color:var(--muted)">Ninguém ainda</span>';
@@ -672,7 +703,7 @@ function renderAuction() {
     if (!mt) h = 'Você está assistindo este leilão.';
     else if (E.slots(mt) === 0) h = 'Seu elenco está completo. Os outros seguem disputando.';
     else if (!E.needFor(state, mt, p)) h = E.isGK(p) ? 'Você já tem goleiro: este lote roda sem você.' : 'Você já tem 10 jogadores de linha: só falta o goleiro.';
-    else h = `Saldo: <b>${fmt(mt.budget)}</b> · Vagas: <b>${E.slots(mt)}</b> (${E.hasGK(state, mt) ? 'goleiro ✓' : 'falta goleiro'}) · Teto neste lote: <b>${fmt(lim)}</b> · Seu lance mínimo: <b>${fmt(mn)}</b>`;
+    else h = chemHint(mt, p) + `Saldo: <b>${fmt(mt.budget)}</b> · Vagas: <b>${E.slots(mt)}</b> (${E.hasGK(state, mt) ? 'goleiro ✓' : 'falta goleiro'}) · Teto neste lote: <b>${fmt(lim)}</b> · Seu lance mínimo: <b>${fmt(mn)}</b>`;
     $('#l-hint').innerHTML = h;
   }
   $('#ffbar').classList.toggle('on', isHost && state.teams.every(t => t.bot || E.slots(t) === 0));
@@ -682,7 +713,7 @@ function renderAuction() {
       <div class="tsub">${t.bot ? esc(t.coach) + ' · bot' : esc(t.coach)} · ${esc(t.formation)}${statusTag(t)}</div>
       <div class="tcount">${t.squad.length}/11 ${E.hasGK(state, t) ? '🧤' : ''}</div></div>`).join('');
   if (mt) {
-    $('#my-title').textContent = `${mt.name} · ${mt.squad.length}/11 · gasto ${fmt(state.settings.budget - mt.budget)}`;
+    $('#my-title').textContent = `${mt.name} · ${mt.squad.length}/11 · gasto ${fmt(state.settings.budget - mt.budget)}` + (E.chemOn(state) ? ` · 🔗 +${E.chemFor(state, mt).total}` : '');
     if ($('#aform') && $('#aform').value !== mt.formation && document.activeElement !== $('#aform')) $('#aform').value = mt.formation;
     const lu = (mt.lineup && mt.lineup.length === 11) ? mt.lineup : previewAssign(mt);
     setHTML($('#mypitch'), pitchHTML(lu, mt.formation, { prices: mt.paid, ovr: !state.settings.hideOvr, click: true, sel: ui.asel }));
@@ -931,6 +962,31 @@ function showFormEditor(refresh) {
     showFormEditor(true);
   };
 }
+// Lock In: um titular joga a próxima rodada com +5 (1 vez por campeonato)
+function lockBtn() {
+  const cur = E.lockedPlayer(state, me.id), left = E.lockLeft(state, me.id);
+  if (cur != null) return `<button class="ghost lock-on" id="c-lock">🔒 Lock In: ${esc(dn(P(cur)))}</button>`;
+  return `<button class="ghost" id="c-lock" ${left <= 0 ? 'disabled' : ''}>${left > 0 ? '🔒 Lock In · ' + left : '🔒 Lock In usado'}</button>`;
+}
+function showLockIn() {
+  const mt = myTeam(); if (!mt || !state.cup || state.cup.live) return;
+  const cur = E.lockedPlayer(state, me.id), slots = E.FORMATIONS[mt.formation];
+  const rows = mt.lineup.map((id, i) => ({ id, pos: slots[i].pos })).filter(x => x.id != null).sort((a, b) => P(b.id).o - P(a.id).o);
+  $('#modal').innerHTML = `<div class="modal" id="mbg"><div class="inner" style="max-width:520px"><div class="top"><h2>🔒 Lock In</h2><button class="ghost" id="mclose">Fechar</button></div>
+    <div class="lead">Escolha um titular para jogar a <b>próxima rodada</b> com <b>+${E.LOCK_BONUS}</b> de rendimento e mais chance de fazer gol. Vale uma vez por campeonato; até a rodada começar, dá para trocar ou cancelar.</div>
+    <div class="lock-list">${rows.map(x => `<button class="lock-row ${x.id === cur ? 'on' : ''}" data-lock="${x.id}"><span class="po">${P(x.id).o}</span><span class="pp">${E.POS_PT[x.pos]}</span><span class="pn">${esc(dn(P(x.id)))}</span>${x.id === cur ? '<b>🔒</b>' : ''}</button>`).join('')}</div>
+    ${cur != null ? '<div class="ctrl"><button class="ghost" id="lock-cancel">Cancelar Lock In</button></div>' : ''}</div></div>`;
+  const close = () => { $('#modal').innerHTML = ''; };
+  $('#mclose').onclick = close; $('#mbg').onclick = e => { if (e.target.id === 'mbg') close(); };
+  $('#modal').querySelectorAll('[data-lock]').forEach(b => b.onclick = () => { act({ type: 'lockin', pid: +b.dataset.lock }); toast('Lock In: ' + dn(P(+b.dataset.lock))); close(); });
+  if ($('#lock-cancel')) $('#lock-cancel').onclick = () => { act({ type: 'lockcancel' }); close(); };
+}
+function lockTags(m) {
+  const L = m.played ? m.locks : (state.cup && state.cup.lock ? { h: state.cup.lock[m.h], a: state.cup.lock[m.a] } : null);
+  if (!L || (L.h == null && L.a == null)) return '';
+  const tag = id => id != null ? `<span class="tac-tag">🔒 ${esc(dn(P(id)))}</span>` : '<span></span>';
+  return `<div class="tacs">${tag(L.h)}<span>lock in</span>${tag(L.a)}</div>`;
+}
 function sameSquad(a, b) { return !!a && a.length === b.length && a.slice().sort((x, y) => x - y).join() === b.slice().sort((x, y) => x - y).join(); }
 function sendDraft() { act({ type: 'lineup', formation: ui.draft.formation, lineup: ui.draft.lineup.slice() }); renderLineup(); }
 
@@ -1043,7 +1099,7 @@ function matchCard(m) {
     ${m.played && m.mvp != null ? `<div class="mvp">⭐ Craque do jogo: <b>${pn(m.mvp)}</b> · nota ${m.r[m.mvp].toFixed(1)}</div>` : ''}
     ${m.played && m.why ? `<div class="why">💬 ${esc(m.why)}</div>` : ''}
     ${m.played && m.st ? `<details class="mdet"><summary>📊 Estatísticas e duelo de setores</summary><div class="tacs">${tacTag(m.cmp && m.cmp.h.t)}<span>estilos</span>${tacTag(m.cmp && m.cmp.a.t)}</div>${m.cmp ? cmpHTML(m.cmp) : ''}${statBars(m)}</details>` : ''}
-    ${!m.played ? `<div class="tacs">${tacTag(H.tactic)}<span>estilos</span>${tacTag(A.tactic)}</div>${previewCmp(m)}` : ''}</div>`;
+    ${lockTags(m)}${!m.played ? `<div class="tacs">${tacTag(H.tactic)}<span>estilos</span>${tacTag(A.tactic)}</div>${E.chemOn(state) ? `<div class="tacs"><span class="tac-tag">🔗 +${E.chemFor(state, H).total}</span><span>fechamento</span><span class="tac-tag">🔗 +${E.chemFor(state, A).total}</span></div>` : ''}${previewCmp(m)}` : ''}</div>`;
 }
 // tabela com o placar parcial da rodada ao vivo
 function liveRows(baseRows, matches, min) {
@@ -1102,11 +1158,11 @@ function renderCup(force) {
         <div class="ctrl">${isHost ? `<button class="gold" id="c-watch">▶ Assistir a rodada</button><button class="ghost" id="c-all">Simular o resto do campeonato</button>` : '<span class="lead" style="margin:0">O anfitrião vai começar a rodada.</span>'}</div></div>` : ''}
       ${myTeam() && up.length ? `<div class="panel tac-panel"><div class="lbl" style="margin:0 0 8px">Seu estilo de jogo para esta rodada</div>${tacticPicker(myTeam().tactic, myTeam())}</div>` : ''}
       ${cup.last ? `<div class="lbl" style="margin:0 0 8px">Resultados · ${esc(cup.last.title)}</div><div class="matches">${cup.last.matches.map(matchCard).join('')}</div>` : ''}
-      <div class="ctrl">${myTeam() && up.length ? '<button class="gold" id="c-form">🧩 Formação e escalação</button>' : ''}${myTeam() ? '<button class="ghost" id="c-mine">📋 Atributos do meu time</button>' : ''}<button class="ghost" id="c-sq">Ver elencos</button></div>
+      <div class="ctrl">${myTeam() && up.length ? '<button class="gold" id="c-form">🧩 Formação e escalação</button>' : ''}${myTeam() && up.length && E.cardsOn(state) ? lockBtn() : ''}${myTeam() ? '<button class="ghost" id="c-mine">📋 Atributos do meu time</button>' : ''}<button class="ghost" id="c-sq">Ver elencos</button></div>
     </div>
     <div class="side"><div class="box">${standingsHTML(90)}</div><div class="box" id="c-stats">${statsHTML(undefined, 3)}</div></div>
   </div>`;
-  $('#c-sq').onclick = showSquads; bindTactics(app); if ($('#c-mine')) $('#c-mine').onclick = showMySquad; if ($('#c-form')) $('#c-form').onclick = showFormEditor;
+  $('#c-sq').onclick = showSquads; bindTactics(app); if ($('#c-mine')) $('#c-mine').onclick = showMySquad; if ($('#c-form')) $('#c-form').onclick = showFormEditor; if ($('#c-lock')) $('#c-lock').onclick = showLockIn;
   if (isHost && up.length) {
     app.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => { ui.liveSpeed = +b.dataset.sp; app.querySelectorAll('[data-sp]').forEach(x => x.classList.toggle('on', x === b)); });
     $('#c-watch').onclick = () => { E.startRound(state, Date.now(), ui.liveSpeed || E.LIVE_DEFAULT); publish(); };
