@@ -243,7 +243,10 @@ export function playMatch(state, h, a, knockout, neutral) {
   const hg = ev.filter(e => e.t === 'gol' && e.s === 'h').length, ag = ev.filter(e => e.t === 'gol' && e.s === 'a').length;
   const m = { h: h.id, a: a.id, hg, ag, ev, played: true };
   m.sh = ev.filter(e => e.t === 'gol' && e.s === 'h').map(e => e.p); m.sa = ev.filter(e => e.t === 'gol' && e.s === 'a').map(e => e.p);
-  if (knockout && hg === ag) {
+  // jogo de volta: knockout = { agg: [gols do mandante, gols do visitante] na ida }; empate no agregado vai para os pênaltis
+  const agg = knockout && knockout.agg ? [hg + knockout.agg[0], ag + knockout.agg[1]] : null;
+  if (agg) m.agg = agg;
+  if (knockout && (agg ? agg[0] === agg[1] : hg === ag)) {
     const kp = (t, o) => 0.75 + (strength(state, t).a - strength(state, o).d) * 0.004;
     const th = takers(state, h), ta = takers(state, a); const shoot = []; let ph = 0, pa = 0, i = 0;
     while (true) {
@@ -255,6 +258,8 @@ export function playMatch(state, h, a, knockout, neutral) {
     m.pens = [ph, pa]; m.shoot = shoot;
   }
   m.w = hg > ag ? h.id : ag > hg ? a.id : m.pens ? (m.pens[0] > m.pens[1] ? h.id : a.id) : null;
+  // quem avança no mata-mata (no jogo de volta, pelo agregado)
+  if (knockout) m.adv = agg && agg[0] !== agg[1] ? (agg[0] > agg[1] ? h.id : a.id) : m.w;
   // notas dos jogadores
   m.r = {};
   for (const side of ['h', 'a']) {
@@ -358,7 +363,7 @@ export function createCup(state) {
   let format = state.settings.format;
   if (format === 'grupos' && ids.length < 6) format = 'liga';
   const cup = { format, phase: null, ri: 0, ko: [], done: false, live: null, speed: LIVE_DEFAULT };
-  if (format === 'liga') { cup.phase = 'liga'; cup.rounds = roundRobin(ids, ids.length <= 4); cup.table = ids.map(emptyRow); }
+  if (format === 'liga' || format === 'ligafinal') { cup.phase = 'liga'; cup.rounds = roundRobin(ids, ids.length <= 4); cup.table = ids.map(emptyRow); }
   else if (format === 'mata') { cup.phase = 'ko'; cup.ko = [buildKO(shuffle(ids.slice()))]; }
   else {
     cup.phase = 'grupos';
@@ -387,8 +392,9 @@ export function nextTitle(state) {
   const cup = state.cup; if (!cup || cup.done) return '';
   if (cup.phase === 'liga') return `Rodada ${cup.ri + 1} de ${cup.rounds.length}`;
   if (cup.phase === 'grupos') return `Fase de grupos · rodada ${cup.ri + 1} de ${cup.groupRounds}`;
-  return koName(cup.ko[cup.ko.length - 1].length * 2);
+  return roundName(cup.ko[cup.ko.length - 1]);
 }
+export function roundName(rd) { const n = koName(rd.length * 2); return rd[0] && rd[0].leg ? `${n} · ${rd[0].leg === 1 ? 'ida' : 'volta'}` : n; }
 export function upcoming(state) { return currentRound(state).filter(m => m.h && m.a && !m.played); }
 
 /* Relógio da rodada ao vivo: 1x = 12 minutos reais para 90 minutos (dois tempos de 6 min) */
@@ -403,14 +409,24 @@ function liveParts(l, now) {
 }
 export const liveMinute = (l, now) => liveParts(l, now).m;
 export const isHalftime = (l, now) => liveParts(l, now).ht;
+// joga uma partida do campeonato com as regras da fase: ida (empate vale), volta (agregado) ou jogo único (neutro, pênaltis)
+function playCup(state, m) {
+  const cup = state.cup, H = T(state, m.h), A = T(state, m.a);
+  botTactics(state, H, A);
+  let ko = cup.phase === 'ko', neutral = ko;
+  if (m.leg === 1) { ko = false; neutral = false; }
+  else if (m.leg === 2) { const ida = m.ida; ko = { agg: [ida.ag, ida.hg] }; neutral = false; }
+  const leg = m.leg, ida = m.ida;
+  Object.assign(m, playMatch(state, H, A, ko, neutral));
+  if (leg) { m.leg = leg; if (ida) m.ida = ida; }
+}
 export function startRound(state, now, speed) {
   const cup = state.cup; if (!cup || cup.done || cup.live) return;
   const ms = currentRound(state);
   ms.forEach(m => {
     if (m.played) return;
     if (!m.h || !m.a) { m.played = true; m.bye = true; m.w = m.h || m.a; return; }
-    botTactics(state, T(state, m.h), T(state, m.a));
-    Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), cup.phase === 'ko', cup.phase === 'ko'));
+    playCup(state, m);
   });
   cup.live = { at: now, base: 0, speed: speed || cup.speed || LIVE_DEFAULT, title: nextTitle(state), endAt: 0 };
 }
@@ -431,12 +447,19 @@ export function tickLive(state, now) {
 export function commitRound(state) {
   const cup = state.cup; if (!cup || cup.done) return;
   const ms = currentRound(state);
-  if (ms.some(m => !m.played)) { cup.live = cup.live || { at: Date.now(), base: 90, speed: 6 }; ms.forEach(m => { if (!m.played) { if (!m.h || !m.a) { m.played = true; m.bye = true; m.w = m.h || m.a; } else { botTactics(state, T(state, m.h), T(state, m.a)); Object.assign(m, playMatch(state, T(state, m.h), T(state, m.a), cup.phase === 'ko', cup.phase === 'ko')); } } }); }
+  if (ms.some(m => !m.played)) { cup.live = cup.live || { at: Date.now(), base: 90, speed: 6 }; ms.forEach(m => { if (!m.played) { if (!m.h || !m.a) { m.played = true; m.bye = true; m.w = m.h || m.a; } else playCup(state, m); } }); }
   cup.last = { title: nextTitle(state), matches: ms.filter(m => !m.bye) };
   cup.live = null;
   if (cup.phase === 'liga') {
     ms.forEach(m => applyTable(cup.table, m)); cup.ri++;
-    if (cup.ri >= cup.rounds.length) finishCup(state, sortTable(state, cup.table).map(r => r.id));
+    if (cup.ri >= cup.rounds.length) {
+      const order = sortTable(state, cup.table).map(r => r.id);
+      if (cup.format === 'ligafinal' && order.length >= 3) {
+        cup.seed = order; cup.phase = 'ko'; cup.ri = 0;
+        // 4 ou mais times: semifinal 1º×4º e 2º×3º em ida e volta (o mais bem colocado decide em casa); 3 times: final entre os 2 primeiros
+        cup.ko = order.length >= 4 ? [[{ h: order[3], a: order[0], leg: 1 }, { h: order[2], a: order[1], leg: 1 }]] : [[{ h: order[0], a: order[1] }]];
+      } else finishCup(state, order);
+    }
     return;
   }
   if (cup.phase === 'grupos') {
@@ -451,6 +474,14 @@ export function commitRound(state) {
       else cup.ko = [buildKO(f1.concat(s2))];
       cup.phase = 'ko'; cup.ri = 0;
     }
+    return;
+  }
+  if (ms[0] && ms[0].leg === 1) { cup.ko.push(ms.map(m => ({ h: m.a, a: m.h, leg: 2, ida: { hg: m.hg, ag: m.ag } }))); return; }
+  if (ms[0] && ms[0].leg === 2) { cup.ko.push([{ h: ms[0].adv, a: ms[1].adv }]); return; }
+  if (ms.length === 1 && cup.seed) {
+    // pontos corridos + finais: campeão, vice, semifinalistas e o resto pela ordem da liga
+    const f = ms[0], champ = f.adv || f.w, vice = champ === f.h ? f.a : f.h;
+    finishCup(state, [champ, vice, ...cup.seed.filter(id => id !== champ && id !== vice)]);
     return;
   }
   if (ms.length === 1) {
@@ -543,7 +574,9 @@ export function buildPool(nTeams, bySector) {
     const q = { 1: 4.1, 2: 3.7, 3: 2.7 };
     return strat(gks, Math.ceil(nTeams * 1.5) + 1).concat(...[1, 2, 3].map(l => strat(fields.filter(i => lineOf(PLAYERS[i]) === l), Math.ceil(nTeams * q[l] * 1.3))));
   }
-  return strat(gks, Math.ceil(nTeams * 1.5) + 1).concat(strat(fields, Math.ceil(nTeams * 10 * 1.25)));
+  // leilão sorteado: o pote também vem equilibrado entre defesa, meio e ataque (na proporção das formações)
+  const q = { 1: 4, 2: 3.6, 3: 2.4 };
+  return strat(gks, Math.ceil(nTeams * 1.5) + 1).concat(...[1, 2, 3].map(l => strat(fields.filter(i => lineOf(PLAYERS[i]) === l), Math.ceil(nTeams * q[l] * 1.25))));
 }
 // quantos jogadores daquela linha o time ainda quer, pela formação
 function lineNeed(state, t, line) {
@@ -557,7 +590,7 @@ export function startAuction(state) {
   const pool = buildPool(state.teams.length, state.settings.order === 'setor');
   state.sector = state.settings.order === 'setor' ? 0 : null;
   state.poolSize = pool.length; state.poolIds = pool.slice();
-  state.pool = pool; state.phase = 'auction'; state.lotNo = 0; state.log = []; state.history = []; state.penal = {}; state.base = {};
+  state.pool = pool; state.unsold = []; state.phase = 'auction'; state.lotNo = 0; state.log = []; state.history = []; state.penal = {}; state.base = {};
   state.teams.forEach(t => { t.budget = state.settings.budget; t.squad = []; t.lineup = Array(11).fill(null); t.ready = false; t.paid = {}; });
   if (state.teams.some(t => t.bot)) state.teams.forEach(t => { if (t.bot) t.formation = pick(FORMATION_NAMES); });
   const ovr = PLAYERS.map(p => p.o); state.lo = Math.min(...ovr); state.hi = Math.max(...ovr);
@@ -602,8 +635,22 @@ export function chooseLot(state, now) {
       if (state.sector < 4) addLog(state, `Agora é a vez dos ${SECTORS[state.sector][0].toLowerCase()}`);
     }
   }
+  // leilão sorteado: escolhe primeiro o setor (defesa, meio, ataque) pelo que os times ainda precisam, evitando sequências do mesmo setor
+  if (state.sector == null && cands.length && !isGK(PLAYERS[cands[0]])) {
+    const last = state.lastLines || [];
+    const opts = [1, 2, 3].map(L => {
+      const c = cands.filter(id => lineOf(PLAYERS[id]) === L);
+      const need = state.teams.reduce((n, t) => n + lineNeed(state, t, L), 0);
+      let w = c.length ? need + 0.6 : 0;
+      if (last[0] === L) w *= last[1] === L ? 0.15 : 0.55;
+      return { L, c, w };
+    }).filter(o => o.w > 0);
+    const tot = opts.reduce((n, o) => n + o.w, 0);
+    if (tot > 0) { let r = Math.random() * tot; const o = opts.find(o => (r -= o.w) <= 0) || opts[opts.length - 1]; cands = o.c; }
+  }
   if (!cands.length) return false;
-  const pid = pick(cands); state.pool.splice(state.pool.indexOf(pid), 1); state.lotNo++;
+  const pid = pick(cands);
+  if (!isGK(PLAYERS[pid])) state.lastLines = [lineOf(PLAYERS[pid]), ...(state.lastLines || [])].slice(0, 2); state.pool.splice(state.pool.indexOf(pid), 1); state.lotNo++;
   const sp = SPEEDS[state.settings.speed];
   state.lot = { no: state.lotNo, pid, price: 0, leader: null, endsAt: now + sp.open * 1000, status: 'open', passed: [], openAt: now };
   state._ai = {}; state.teams.forEach(t => { if (botLike(t)) state._ai[t.id] = { max: botMax(state, t, PLAYERS[pid]), next: now + rnd(900, 2600) }; });
@@ -663,7 +710,7 @@ function closeLot(state, winnerId, price, now) {
     lockVersions(state, p);
     placeNew(state, t, lot.pid);
     addLog(state, `${p.n} → ${t.name} por R$ ${price}`);
-  } else addLog(state, `${p.n} ficou sem lance`);
+  } else { addLog(state, `${p.n} ficou sem lance`); (state.unsold = state.unsold || []).push(lot.pid); }
 }
 // chamado a cada ~200ms no anfitrião; devolve true se o estado mudou
 export function tickAuction(state, now) {
@@ -714,9 +761,13 @@ export function skipToEnd(state, now) {
 // Vagas em branco: recebem o pior jogador que sobrou na posição (com −5 de rendimento); sem sobra, entra um Cria da Base
 export function endAuction(state) {
   let bid = 1000; state.penal = state.penal || {};
+  // quem ficou sem lance volta para as sobras (no modo Copa, só se nenhuma outra versão da pessoa foi vendida)
+  const sold = new Set(state.teams.flatMap(t => t.squad).filter(id => PLAYERS[id]).map(id => PLAYERS[id].id).filter(x => x != null));
+  (state.unsold || []).forEach(id => { if (!state.pool.includes(id) && !(PLAYERS[id].id != null && sold.has(PLAYERS[id].id))) state.pool.push(id); });
+  state.unsold = [];
   const takeWorst = filter => {
     const c = state.pool.filter(id => filter(PLAYERS[id])).sort((a, b) => PLAYERS[a].o - PLAYERS[b].o);
-    if (!c.length) return null; state.pool.splice(state.pool.indexOf(c[0]), 1); return c[0];
+    if (!c.length) return null; state.pool.splice(state.pool.indexOf(c[0]), 1); lockVersions(state, PLAYERS[c[0]]); return c[0];
   };
   state.teams.forEach(t => {
     if (!t.lineup || t.lineup.length !== 11) t.lineup = arrange(state, t, t.formation);
@@ -744,10 +795,9 @@ export function endAuction(state) {
   state.lot = null;
   // do fim do leilão até a bola rolar: 5 minutos no total (janela de trocas + tática)
   state.prepEndsAt = Date.now() + PREP_MS; state.lineupEndsAt = state.prepEndsAt;
-  if (state.settings.trades) {
-    state.phase = 'trades'; state.tr = { offers: [], deals: [], count: {}, seq: 0 };
-    state.teams.forEach(t => { t.ready = botLike(t); });
-  } else state.phase = 'lineup';
+  // sempre abre o mercado de sobras; as trocas entre técnicos só com a janela de trocas ligada
+  state.phase = 'trades'; state.tr = { offers: [], deals: [], count: {}, seq: 0, marketOnly: !state.settings.trades };
+  state.teams.forEach(t => { t.ready = botLike(t); });
 }
 export const PREP_MS = 300000, TRADE_LIMIT = 3;
 
@@ -783,6 +833,7 @@ function validOffer(state, o) {
 }
 export function makeOffer(state, from, to, give, get, cash, now) {
   if (state.phase !== 'trades') return 'A janela está fechada';
+  if (state.tr.marketOnly) return 'As trocas estão desligadas nesta sala';
   const o = { id: ++state.tr.seq, from, to, give: (give || []).map(Number), get: (get || []).map(Number), cash: Math.round(+cash || 0), at: now };
   const err = validOffer(state, o); if (err) return err;
   state.tr.offers = state.tr.offers.filter(x => !(x.from === from && x.to === to));

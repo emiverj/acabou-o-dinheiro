@@ -299,6 +299,7 @@ const SVG = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="cur
 const ICON = {
   liga: SVG('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16"/>'),
   mata: SVG('<path d="M3 5h5v4H3zM3 15h5v4H3zM8 7h3v10H8M11 12h4M15 10h6v4h-6z"/>'),
+  ligafinal: SVG('<rect x="2" y="4" width="9" height="16" rx="1.5"/><path d="M2 9h9M2 14h9M11 7h3v10h-3M14 12h3"/><path d="M17 9h5v6h-5z"/>'),
   grupos: SVG('<rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="13" width="7" height="7" rx="1.5"/><path d="M10 7.5h3v9h-3M13 12h3"/><path d="M16 9h5v6h-5z"/>'),
   normal: SVG('<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/>'),
   rapido: SVG('<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>'),
@@ -337,13 +338,13 @@ function renderHome() {
         <div class="field"><label>Orçamento</label>${seg('budget', [['100','R$ 100'],['150','R$ 150'],['200','R$ 200']])}</div>
         <div class="field"><label>Máx. de técnicos</label><select id="f-max">${[2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${+ui.settings.max === n ? 'selected' : ''}>${n} técnicos</option>`).join('')}</select></div>
       </div>
-      <div class="field"><label>Campeonato</label>${seg('format', [['liga','Pontos corridos',ICON.liga],['mata','Mata-mata',ICON.mata],['grupos','Grupos + mata',ICON.grupos]], 'tiles')}</div>
+      <div class="field"><label>Campeonato</label>${seg('format', [['liga','Pontos corridos',ICON.liga],['ligafinal','Liga + finais',ICON.ligafinal],['mata','Mata-mata',ICON.mata],['grupos','Grupos + mata',ICON.grupos]], 'tiles fmt')}</div>
       <div class="field"><label>Ordem do leilão</label>${seg('order', [['livre','Sorteada',ICON.shuffle,'Qualquer posição a qualquer hora'],['setor','Por setor',ICON.sector,'Goleiros → defesa → meio → ataque']], 'tiles row')}</div>
       <div class="grid2">
         <div class="field"><label>Velocidade do leilão</label>${seg('speed', [['normal','Normal',ICON.normal],['rapido','Rápido',ICON.rapido]], 'tiles')}</div>
         <div class="field"><label>Overall no leilão</label>${seg('hide', [['0','Visível',miniCard('88')],['1','Escondido',miniCard('?')]], 'tiles')}</div>
       </div>
-      <div class="field"><label>Janela de trocas</label>${seg('trades', [['0','Desligada',ICON.lock2,'Do leilão direto para a tática'],['1','Ligada',ICON.swap,'Trocas e mercado de sobras depois do leilão']], 'tiles row')}</div>
+      <div class="field"><label>Janela de trocas</label>${seg('trades', [['0','Desligada',ICON.lock2,'Só o mercado de sobras depois do leilão'],['1','Ligada',ICON.swap,'Trocas entre técnicos e mercado de sobras']], 'tiles row')}</div>
       <div class="field"><label>Sala</label>${seg('pub', [['1','Pública',ICON.pub,'Aparece em "Salas abertas"'],['0','Privada',ICON.priv,'Só entra quem tem o código']], 'tiles row')}</div>
       <button class="cta" id="create">Criar sala</button>
     </div>
@@ -425,7 +426,7 @@ function renderLobby() {
   $('#rulebook').onclick = showRules;
   $('#lobby-record').innerHTML = recordHTML();
   const nT = state.teams.length, poolEst = Math.ceil(nT * 1.5) + 1 + Math.ceil(nT * 12.5);
-  $('#rules').innerHTML = `<b>Pote desta partida:</b> ${poolEst} jogadores sorteados para ${nT * 11} vagas.<br><b>Regras da sala:</b> base ${BASE_NAMES[s.base] || 'Europa'} · orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · ${s.trades ? 'com janela de trocas · ' : ''}leilão ${s.order === 'setor' ? 'por setor, ' : ''}${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
+  $('#rules').innerHTML = `<b>Pote desta partida:</b> ${poolEst} jogadores sorteados para ${nT * 11} vagas.<br><b>Regras da sala:</b> base ${BASE_NAMES[s.base] || 'Europa'} · orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', ligafinal:'pontos corridos + finais', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · ${s.trades ? 'com janela de trocas · ' : ''}leilão ${s.order === 'setor' ? 'por setor, ' : ''}${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
   $('#plist').innerHTML = state.teams.map(t => `<div class="prow2">
       <span class="dot" style="background:${t.color};width:14px;height:14px"></span>
       <div><div class="nm">${esc(t.name)}${t.id === me.id ? ' (você)' : ''}</div><small>${esc(t.coach)} · ${esc(t.formation)}${t.bot ? ' · ' + esc(t.pers.n) : ''}${statusTag(t)}</small></div>
@@ -687,14 +688,15 @@ requestAnimationFrame(frame);
 /* ---------- janela de trocas ---------- */
 function renderTrades() {
   const mt = myTeam(), tr = state.tr; ui.tr = ui.tr || { give: [], get: [], to: null, cash: 0, dir: 'pay', tab: 'trade' };
-  const others = state.teams.filter(t => !mt || t.id !== mt.id);
+  const others = state.teams.filter(t => !mt || t.id !== mt.id), mkOnly = !!tr.marketOnly;
+  if (mkOnly) ui.tr.tab = 'free';
   if (!ui.tr.to || !teamById(ui.tr.to)) ui.tr.to = others[0] && others[0].id;
   if (view !== 'trades') {
     view = 'trades';
     app.innerHTML = `
-    <div class="ah"><h2>Janela de trocas</h2><div class="prog">A bola rola em <span class="countdown" id="tr-cd"></span></div></div>
+    <div class="ah"><h2>${mkOnly ? 'Mercado de sobras' : 'Janela de trocas'}</h2><div class="prog">A bola rola em <span class="countdown" id="tr-cd"></span></div></div>
     <div class="tr-top" id="tr-top"></div>
-    <div class="tr-tabs seg"><button data-tab="trade">🔁 Trocas</button><button data-tab="free">🛒 Mercado de sobras</button></div>
+    <div class="tr-tabs seg" ${mkOnly ? 'style="display:none"' : ''}><button data-tab="trade">🔁 Trocas</button><button data-tab="free">🛒 Mercado de sobras</button></div>
     <div class="tgrid" id="tr-trade">
       <div class="panel" id="tr-build">
         <div class="field"><label>Negociar com</label><select id="tr-to"></select></div>
@@ -705,7 +707,7 @@ function renderTrades() {
       </div>
       <div class="side"><div id="tr-props"></div><div class="box"><h3>Últimos negócios</h3><ul class="feed small" id="tr-deals"></ul></div></div>
     </div>
-    <div class="panel" id="tr-freep" style="display:none"><div class="lead" style="margin-bottom:10px">Jogadores sem dono, a preço fixo. Escolha quem sai do seu elenco (goleiro por goleiro, linha por linha).</div><div id="tr-free"></div></div>`;
+    <div class="panel" id="tr-freep" style="display:none"><div class="lead" style="margin-bottom:10px">Jogadores que sobraram do leilão (inclusive os que ficaram sem lance), a preço fixo. Escolha quem sai do seu elenco (goleiro por goleiro, linha por linha). Quando terminar, clique em <b>Pronto</b> para ir à tática.</div><div id="tr-free"></div></div>`;
     $('#tr-to').onchange = e => { ui.tr.to = e.target.value; ui.tr.get = []; renderTrades(); };
     const num = v => Math.max(0, Math.floor(+String(v).replace(/\D/g, '') || 0));
     $('#tr-dir').onchange = e => { ui.tr.dir = e.target.value; sumLine(); };
@@ -722,7 +724,7 @@ function renderTrades() {
   const T = teamById(ui.tr.to);
   const left = mt ? E.tradesLeft(state, mt) : 0;
   const waiting = state.teams.filter(t => !E.botLike(t) && !t.ready).length;
-  setHTML($('#tr-top'), mt ? `<span>💰 <b>${fmt(mt.budget)}</b></span><span>🔁 <b>${E.TRADE_LIMIT - left}/${E.TRADE_LIMIT}</b> trocas</span>
+  setHTML($('#tr-top'), mt ? `<span>💰 <b>${fmt(mt.budget)}</b></span>${mkOnly ? '' : `<span>🔁 <b>${E.TRADE_LIMIT - left}/${E.TRADE_LIMIT}</b> trocas</span>`}
     <button class="${mt.ready ? 'ghost' : 'gold'}" id="tr-ready">${mt.ready ? 'Pronto ✓' : 'Pronto'}</button><button class="ghost small" id="tr-attr">📋 Atributos</button>
     ${isHost ? '<button class="ghost small" id="tr-go">Encerrar janela</button>' : ''}${waiting ? `<span class="tr-wait">${waiting} ${waiting > 1 ? 'técnicos' : 'técnico'} decidindo</span>` : ''}` : '');
   setHTML($('#tr-to'), others.map(t => `<option value="${t.id}" ${t.id === ui.tr.to ? 'selected' : ''}>${esc(t.name)}${E.botLike(t) ? ' (bot)' : ''} · ${fmt(t.budget)}</option>`).join(''));
@@ -904,7 +906,7 @@ function matchCard(m) {
   const goals = side => (m.ev || []).filter(e => e.t === 'gol' && e.s === side).map(e => `${pn(e.p)} ${minTxt(e.m)}${e.kind !== 'jogada' ? ' <i>(' + (e.kind === 'penalti' ? 'pên.' : e.kind === 'falta' ? 'falta' : 'cab.') + ')</i>' : ''}`).join('<br>');
   return `<div class="match ${mine ? 'me' : ''}">${m.g ? `<div class="mtag">${esc(m.g)}</div>` : ''}<div class="mrow"><div class="h ${m.played && m.w === m.h ? 'win' : ''}">${tn(m.h)}</div>
     <div class="score ${m.played ? '' : 'pending'}">${m.played ? m.hg + ' × ' + m.ag : 'vs'}</div><div class="a ${m.played && m.w === m.a ? 'win' : ''}">${tn(m.a)}</div></div>
-    ${m.played ? `<div class="scorers"><div>${goals('h')}</div><div>${goals('a')}</div></div>` : ''}${m.pens ? `<div class="pens">Pênaltis: ${m.pens[0]} × ${m.pens[1]}</div>` : ''}
+    ${m.played ? `<div class="scorers"><div>${goals('h')}</div><div>${goals('a')}</div></div>` : ''}${m.played && m.agg ? `<div class="pens">Agregado: ${m.agg[0]} × ${m.agg[1]} · ${esc(teamById(m.adv).name)} na final</div>` : !m.played && m.ida ? `<div class="pens">Ida: ${tn(m.a)} ${m.ida.hg} × ${m.ida.ag} ${tn(m.h)}</div>` : ''}${m.pens ? `<div class="pens">Pênaltis: ${m.pens[0]} × ${m.pens[1]}</div>` : ''}
     ${m.played && m.mvp != null ? `<div class="mvp">⭐ Craque do jogo: <b>${pn(m.mvp)}</b> · nota ${m.r[m.mvp].toFixed(1)}</div>` : ''}
     ${m.played && m.why ? `<div class="why">💬 ${esc(m.why)}</div>` : ''}
     ${m.played && m.st ? `<details class="mdet"><summary>📊 Estatísticas e duelo de setores</summary><div class="tacs">${tacTag(m.cmp && m.cmp.h.t)}<span>estilos</span>${tacTag(m.cmp && m.cmp.a.t)}</div>${m.cmp ? cmpHTML(m.cmp) : ''}${statBars(m)}</details>` : ''}
@@ -926,10 +928,10 @@ function standingsHTML(min) {
   const cup = state.cup, live = cup.live, ms = live ? E.currentRound(state) : [];
   if (cup.phase === 'liga') return `<h3>${live ? 'Classificação ao vivo' : 'Classificação'}</h3>${live ? tableHTML(liveRows(cup.table, ms, min), cup.table) : tableHTML(cup.table)}`;
   if (cup.phase === 'grupos') return cup.groups.map(g => `<div class="grp"><h4>${esc(g.name)}${live ? ' · ao vivo' : ''}</h4>${live ? tableHTML(liveRows(g.table, ms.filter(m => m.g === g.name), min), g.table) : tableHTML(g.table)}</div>`).join('') + '<div class="hint">Os 2 primeiros de cada grupo avançam ao mata-mata.</div>';
-  return `<h3>Chaveamento</h3><div class="bracket">${cup.ko.map(rd => `<div class="bround"><h4>${E.koName(rd.length * 2)}</h4>${rd.map(m => {
+  return `<h3>Chaveamento</h3><div class="bracket">${cup.ko.map(rd => `<div class="bround"><h4>${E.roundName(rd)}</h4>${rd.map(m => {
     const isLive = live && rd === cup.ko[cup.ko.length - 1] && m.ev; const sc = isLive ? scoreAt(m, min) : [m.hg, m.ag];
-    const fin = m.played && (!isLive || min >= 90);
-    return `<div class="bm"><span class="${fin && m.w === m.h ? 'w' : ''}">${m.h ? esc(teamById(m.h).name) : 'folga'}</span><span>${m.played && !m.bye ? sc[0] + '×' + sc[1] + (fin && m.pens ? ' (p)' : '') : '·'}</span><span class="${fin && m.w === m.a ? 'w' : ''}">${m.a ? esc(teamById(m.a).name) : 'folga'}</span></div>`; }).join('')}</div>`).join('')}</div>`;
+    const fin = m.played && (!isLive || min >= 90), win = m.leg === 1 ? null : (m.adv || m.w);
+    return `<div class="bm"><span class="${fin && win === m.h ? 'w' : ''}">${m.h ? esc(teamById(m.h).name) : 'folga'}</span><span>${m.played && !m.bye ? sc[0] + '×' + sc[1] + (fin && m.agg ? ` <small>(${m.agg[0]}×${m.agg[1]})</small>` : '') + (fin && m.pens ? ' (p)' : '') : '·'}</span><span class="${fin && win === m.a ? 'w' : ''}">${m.a ? esc(teamById(m.a).name) : 'folga'}</span></div>`; }).join('')}</div>`).join('')}</div>${cup.seed ? `<h3 style="margin-top:14px">Pontos corridos (final)</h3>${tableHTML(cup.table)}` : ''}`;
 }
 // estatísticas da competição, cada uma num card com ícone
 const STAT_CARDS = [
@@ -960,7 +962,7 @@ function renderCup(force) {
   view = 'cup'; liveKey = '';
   const up = E.upcoming(state);
   app.innerHTML = `
-  <div class="ah"><h2>${cup.last ? esc(cup.last.title) : 'Campeonato'}</h2><div class="prog">${{ liga:'Pontos corridos', mata:'Mata-mata', grupos:'Grupos + mata-mata' }[cup.format]} · próximo: ${esc(E.nextTitle(state))}</div></div>
+  <div class="ah"><h2>${cup.last ? esc(cup.last.title) : 'Campeonato'}</h2><div class="prog">${{ liga:'Pontos corridos', ligafinal:'Pontos corridos + finais', mata:'Mata-mata', grupos:'Grupos + mata-mata' }[cup.format]} · próximo: ${esc(E.nextTitle(state))}</div></div>
   <div class="cgrid">
     <div>
       ${up.length ? `<div class="panel" style="padding:16px;margin-bottom:14px">${isHost ? speedCtrl(ui.liveSpeed || E.LIVE_DEFAULT) : ''}<div class="lbl" style="margin:0 0 8px">Próximos jogos · ${esc(E.nextTitle(state))}</div><div class="matches">${up.map(matchCard).join('')}</div>
@@ -1064,9 +1066,9 @@ function liveTick(force) {
 /* ---------- FIM ---------- */
 function recordHTML() {
   const rec = state.record; if (!rec || !Object.keys(rec).length) return '';
-  const rows = Object.entries(rec).map(([id, r]) => ({ id, ...r })).sort((a, b) => b.tit - a.tit || b.vice - a.vice || b.v - a.v || (b.gp - b.gc) - (a.gp - a.gc));
+  const rows = Object.entries(rec).map(([id, r]) => ({ id, ...r })).map(r => ({ ...r, pts: r.v * 3 + r.e })).sort((a, b) => b.tit - a.tit || b.vice - a.vice || b.pts - a.pts || (b.gp - b.gc) - (a.gp - a.gc));
   return `<div class="panel" style="margin-top:18px"><h2>Histórico da sala</h2><div class="lead">Somando todas as partidas jogadas nesta sala.</div>
-    <table class="std"><tr><th>#</th><th>Time</th><th>🏆</th><th>Vice</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr>${rows.map((r, i) => `<tr class="${r.id === me.id ? 'me' : ''}"><td>${i + 1}</td><td style="font-family:Archivo;font-weight:700">${esc(r.name)} <small style="color:var(--muted);font-weight:500">${esc(r.coach)}</small></td><td class="pts">${r.tit}</td><td>${r.vice}</td><td>${r.j}</td><td>${r.v}</td><td>${r.e}</td><td>${r.d}</td><td>${r.gp - r.gc}</td></tr>`).join('')}</table></div>`;
+    <table class="std"><tr><th>#</th><th>Time</th><th>🏆</th><th>Vice</th><th>Pts</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr>${rows.map((r, i) => `<tr class="${r.id === me.id ? 'me' : ''}"><td>${i + 1}</td><td style="font-family:Archivo;font-weight:700">${esc(r.name)} <small style="color:var(--muted);font-weight:500">${esc(r.coach)}</small></td><td class="pts">${r.tit}</td><td>${r.vice}</td><td class="pts">${r.pts}</td><td>${r.j}</td><td>${r.v}</td><td>${r.e}</td><td>${r.d}</td><td>${r.gp - r.gc}</td></tr>`).join('')}</table></div>`;
 }
 // ranking final: top 5 de artilheiro, garçom, melhor jogador e paredão
 function rankingsHTML(ps, minJ) {
@@ -1085,7 +1087,7 @@ function renderEnd() {
   const order = state.cup.final, champ = teamById(order[0]), mt = myTeam();
   const fmtName = state.cup.format;
   const myPos = mt ? order.indexOf(mt.id) + 1 : 0;
-  const posTxt = n => fmtName === 'liga' ? n + 'º lugar' : n === 1 ? 'Campeão' : n === 2 ? 'Vice-campeão' : n <= 4 ? 'Semifinalista' : 'Eliminado antes da semi';
+  const posTxt = n => fmtName === 'liga' ? n + 'º lugar' : n === 1 ? 'Campeão' : n === 2 ? 'Vice-campeão' : n <= 4 && !(fmtName === 'ligafinal' && state.teams.length < 4) ? 'Semifinalista' : fmtName === 'ligafinal' ? n + 'º lugar' : 'Eliminado antes da semi';
   const ps = E.playerStats(state);
   const top = ps.filter(r => r.g).sort((a, b) => b.g - a.g || b.a - a.a)[0];
   const ast = ps.filter(r => r.a).sort((a, b) => b.a - a.a || b.g - a.g)[0];
