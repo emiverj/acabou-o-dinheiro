@@ -425,7 +425,7 @@ function renderLobby() {
   const s = state.settings;
   $('#rulebook').onclick = showRules;
   $('#lobby-record').innerHTML = recordHTML();
-  const nT = state.teams.length, poolEst = Math.ceil(nT * 1.5) + 1 + Math.ceil(nT * 12.5);
+  const nT = state.teams.length, poolEst = E.buildPool(nT, s.order === 'setor').length;
   $('#rules').innerHTML = `<b>Pote desta partida:</b> ${poolEst} jogadores sorteados para ${nT * 11} vagas.<br><b>Regras da sala:</b> base ${BASE_NAMES[s.base] || 'Europa'} · orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', ligafinal:'pontos corridos + finais', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · ${s.trades ? 'com janela de trocas · ' : ''}leilão ${s.order === 'setor' ? 'por setor, ' : ''}${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
   $('#plist').innerHTML = state.teams.map(t => `<div class="prow2">
       <span class="dot" style="background:${t.color};width:14px;height:14px"></span>
