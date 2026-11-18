@@ -750,3 +750,9 @@ body[data-mode=copa]:not(.light) .seg.tiles button.on{background:color-mix(in sr
 /* lance máximo / lance alto armado: pede o segundo toque para confirmar */
 .bid.max.armed,body .bid.max.armed,#l-send.armed{background:var(--bad)!important;color:#fff!important;border-color:var(--bad)!important;animation:armpulse .6s ease-in-out infinite alternate}
 @keyframes armpulse{from{box-shadow:0 0 0 0 rgba(255,77,61,.0)}to{box-shadow:0 0 0 5px rgba(255,77,61,.35)}}
+/* lance máximo afastado dos outros botões (e do Passar, que fica do outro lado) */
+.bids.three,.bids.three{grid-template-columns:repeat(3,1fr)}
+@media (max-width:640px){ .bids.three{grid-template-columns:repeat(3,1fr)} }
+.maxrow{display:flex;align-items:center;gap:12px;margin-top:22px;padding-top:14px;border-top:1px dashed var(--line2)}
+.maxrow .bid.max{flex:0 0 46%;max-width:220px;min-height:52px}
+.maxrow span{font-size:12px;color:var(--muted)}

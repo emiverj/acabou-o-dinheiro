@@ -512,13 +512,13 @@ function renderAuction() {
             <div class="timer"><div class="bar" id="l-bar"></div></div>
             <div class="call" id="l-call"></div>
             <div id="bidzone">
-              <div class="bids four">
+              <div class="bids three">
                 <button class="bid" data-inc="1">+1<small></small></button>
                 <button class="bid" data-inc="5">+5<small></small></button>
                 <button class="bid" data-inc="10">+10<small></small></button>
-                <button class="bid max" id="l-max">Máx.<small></small></button>
               </div>
               <div class="custom"><input type="number" id="l-custom" min="1" placeholder="Valor em R$"><button class="ghost" id="l-send">Dar lance</button><button class="pass" id="l-pass">Passar</button></div>
+              <div class="maxrow"><button class="bid max" id="l-max">Máx.<small></small></button><span>Lance máximo: pede confirmação</span></div>
             </div>
             <div class="hint" id="l-hint"></div>
             ${reactBar()}
