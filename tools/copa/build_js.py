@@ -39,3 +39,5 @@ for x in sorted(F,key=lambda x:(-x['o2'],x['year'])):
     out.append(d)
 open(os.path.join(ROOT,'players_copa.js'),'w',encoding='utf-8').write('// Base do modo Copa do Mundo: cada carta é uma versão (jogador + Copa + seleção), régua própria 81–99.\n// Fontes: Fjelstul World Cup Database (1930–2022), openfootball (2026) e convocações de 2026; notas estimadas e revisadas pelo Marcos.\n// y = ano da Copa · id = pessoa (todas as versões do mesmo jogador têm o mesmo id) · s = [RIT, FIN, PAS, DRI, DEF, FIS] estimados\nexport const PLAYERS_COPA = '+json.dumps(out,ensure_ascii=False,separators=(',',':'))+';\n')
 import collections; print(len(out), sorted(collections.Counter(d['o'] for d in out).items()))
+# apelidos e emojis dos especiais (planilha do Marcos) prevalecem sobre os do modelo
+import importlib.util as _u; _sp=_u.spec_from_file_location('ae', os.path.join(ROOT,'tools','apply_especiais.py')); _m=_u.module_from_spec(_sp); _sp.loader.exec_module(_m); _m.run(['players_copa.js'])
