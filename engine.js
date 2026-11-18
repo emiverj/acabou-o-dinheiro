@@ -98,11 +98,38 @@ const SECT = { ST:{a:1}, CF:{a:.9,m:.3}, LW:{a:.85,m:.2}, RW:{a:.85,m:.2}, LM:{a
   CAM:{a:.55,m:.7}, CM:{a:.15,m:1,d:.2}, CDM:{m:.7,d:.6}, LB:{d:.9,m:.15,a:.1}, RB:{d:.9,m:.15,a:.1},
   LWB:{d:.75,m:.25,a:.15}, RWB:{d:.75,m:.25,a:.15}, CB:{d:1}, GK:{d:.9} };
 const BASEVOL = { a:3.1, m:3.6, d:5.3 };
+/* Fechamento (química, opcional na sala): jogadores do mesmo clube (ou da mesma seleção na mesma Copa) e,
+   mais fraco, do mesmo país (ou da mesma seleção em outra Copa) se fortalecem quando estão juntos no time titular. */
+export function chemLink(p, q) {
+  if (!p || !q || p === q || p.base || q.base) return null;
+  if (p.y != null) { // modo Copa: cada carta é uma seleção numa Copa
+    if (p.c === q.c && p.y === q.y) return { w: 2, k: 'copa', txt: `${p.c} ${p.y}` };
+    if (p.c === q.c) return { w: 1, k: 'pais', txt: p.c };
+    return null;
+  }
+  if (p.t && p.t === q.t) return { w: 2, k: 'clube', txt: p.t };
+  if (p.c && p.c === q.c && !(BASE_NOW() === 'brasileirao' && p.c === 'Brasil')) return { w: 1, k: 'pais', txt: p.c };
+  return null;
+}
+// pontos de ligação de cada titular → bônus no rendimento: 2 pts = +1, 4 = +2, 6 ou mais = +3
+export const chemBonus = pts => pts >= 6 ? 3 : pts >= 4 ? 2 : pts >= 2 ? 1 : 0;
+export function chemFor(state, team) {
+  const ids = (team.lineup || []), n = ids.length, pts = Array(n).fill(0), links = [];
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    if (ids[i] == null || ids[j] == null) continue;
+    const L = chemLink(getP(state, ids[i]), getP(state, ids[j])); if (!L) continue;
+    pts[i] += L.w; pts[j] += L.w; links.push({ i, j, ...L });
+  }
+  const bonus = pts.map(chemBonus);
+  return { pts, bonus, links, total: bonus.reduce((a, b) => a + b, 0) };
+}
+export const chemOn = state => !!(state && state.settings && state.settings.chem);
 export function strength(state, team) {
   const slots = FORMATIONS[team.formation];
   const acc = { a:[0,0], m:[0,0], d:[0,0] };
+  const ch = chemOn(state) && team.lineup && !team.lineup.every(x => x == null) ? chemFor(state, team) : null;
   slots.forEach((s, i) => {
-    const p = getP(state, team.lineup[i]); const sc = slotScore(p, s.pos);
+    const p = getP(state, team.lineup[i]); const sc = slotScore(p, s.pos) + (ch ? ch.bonus[i] : 0);
     for (const k in SECT[s.pos]) { acc[k][0] += SECT[s.pos][k] * sc; acc[k][1] += SECT[s.pos][k]; }
   });
   const r = {};
@@ -655,6 +682,8 @@ function botMax(state, t, p) {
   const sameLine = slotsF.filter(sp => LINE[sp] === LINE[p.p]).length;
   const have = t.squad.map(id => getP(state, id)).filter(q => LINE[q.p] === LINE[p.p]).length;
   if (!isGK(p)) { v *= bestFit >= .97 ? 1.05 : .85; if (have >= sameLine) v *= .55; }
+  // Fechamento ligado: bot paga mais por quem fecha com o elenco dele
+  if (chemOn(state)) { const w = t.squad.reduce((n, id) => { const L = chemLink(p, getP(state, id)); return n + (L ? L.w : 0); }, 0); v *= 1 + 0.1 * Math.min(4, w); }
   v = Math.max(v, floorFor(state, p));
   return Math.max(1, Math.min(Math.round(v), maxAllowed(t)));
 }

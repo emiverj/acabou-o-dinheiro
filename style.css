@@ -779,3 +779,14 @@ body.light[data-mode=europa] :is(.field-pitch,.pitch){--gold:#8fd8ff}
 body.light[data-mode=copa] :is(.field-pitch,.pitch){--gold:#ffe08a}
 body.light .fslot .sn{color:#f6f1e2}
 body.light .bid small{color:#b4c3b8}
+/* Fechamento (química) */
+.chem-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+.chem-lines line{stroke:var(--gold);stroke-width:2.5;vector-effect:non-scaling-stroke;opacity:.85;stroke-linecap:round}
+.chem-lines line.weak{stroke-width:1.6;stroke-dasharray:4 4;opacity:.6}
+.chb{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);margin-top:1px}
+.chem-total{position:absolute;left:8px;top:8px;z-index:2;background:rgba(6,20,13,.82);border:1px solid rgba(243,236,216,.25);border-radius:999px;padding:4px 10px;font-size:12px;font-weight:800;color:#f3ecd8}
+.chem-total small{font-weight:600;opacity:.75;margin-left:4px}
+.chem-hint{margin-bottom:6px;padding:7px 10px;border-radius:10px;background:color-mix(in srgb,var(--gold) 12%,transparent);border:1px solid color-mix(in srgb,var(--gold) 45%,transparent)}
+.chem-hint small{opacity:.75}
+body.light .chem-hint{color:var(--chalk)}
+#l-floor.chem-on{color:var(--gold);font-weight:700}
