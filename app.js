@@ -57,8 +57,10 @@ function updateBadge() {
 }
 
 /* ---------- rede ---------- */
+let quietUntil = 0, lastLoopAt = 0;
 function publish() {
   if (!isHost || !state) return;
+  if (Date.now() < quietUntil) { render(); return; }
   if (state.phase === 'end' && state.cup && !state.cup.tracked) {
     state.cup.tracked = true; const ch0 = teamById(state.cup.final[0]);
     track('campeonato_finalizado', { sala: code, formato: state.cup.format, tecnicos: state.teams.length, humanos: state.teams.filter(t => !t.bot).length, campeao_bot: !!(ch0 && ch0.bot) });
@@ -69,7 +71,7 @@ function publish() {
   render();
 }
 function heartbeat() {
-  if (!isHost || !state || !ch) return;
+  if (!isHost || !state || !ch || Date.now() < quietUntil) return;
   state.hostNow = Date.now(); ch.send('state', strip(state));
   if (state.settings.pub && lobbyCh && state.phase === 'lobby') {
     lobbyCh.send('room', { code, name: state.teams[0].name, host: state.teams[0].coach, count: state.teams.length, max: state.settings.max, base: state.settings.base || 'europa', ts: Date.now() });
@@ -88,7 +90,15 @@ function onMsg(ev, p) {
   }
   if (ev === 'state' && !isHost) {
     if (!p || p.code !== code) return;
-    if (state && p.hostNow < state.hostNow) return;
+    // dois anfitriões (um voltou de um travamento): vale só o de mandato mais novo; empate: menor id
+    if (state) {
+      const me0 = state.epoch || 0, th = p.epoch || 0;
+      if (th < me0) return;
+      if (th === me0 && p.hostId !== state.hostId && String(p.hostId) > String(state.hostId)) return;
+      if (th === me0 && p.hostId === state.hostId && p.hostNow < state.hostNow) return;
+    }
+    // o anfitrião atual devolveu a sala para mim (criador da sala voltou)
+    if (p.hostId === me.id && p.handoff && p.handoff.to === me.id) { becomeHost(p); return; }
     const prevPhase = state && state.phase;
     if (p.rebind && p.rebind.from === me.id) { me.id = p.rebind.to; try { sessionStorage.setItem('acabou-id', me.id); } catch (e) {} toast('Você voltou para o seu time!'); }
     state = p; setBase(p.settings && p.settings.base); offset = p.hostNow - Date.now(); lastSeen = Date.now();
@@ -99,10 +109,41 @@ function onMsg(ev, p) {
   } else if (ev === 'action' && isHost) handleAction(p);
 }
 function stepDown(p) {
-  isHost = false; clearInterval(loopIv); clearInterval(hbIv);
+  isHost = false; stopHostLoops(); quietUntil = 0;
   state = p; setBase(p.settings && p.settings.base); offset = p.hostNow - Date.now(); lastSeen = Date.now();
   if (ch) ch.send('action', { type: 'join', id: me.id, name: me.name, team: me.team });
   toast('Outro técnico está conduzindo a sala'); render();
+}
+// O criador da sala voltou e está conectado há 8 s: o anfitrião substituto devolve a sala num momento seguro
+let creatorBackAt = 0;
+function maybeHandBack(now) {
+  const cr = state.creatorId; if (!cr || cr === me.id || !teamById(cr)) { creatorBackAt = 0; return; }
+  const seen = (state.seen || {})[cr] || 0;
+  if (now - seen > 9000) { creatorBackAt = 0; return; }
+  if (!creatorBackAt) { creatorBackAt = now; return; }
+  if (now - creatorBackAt < 8000) return;
+  if ((state.cup && state.cup.live) || (state.phase === 'auction' && state.lot && state.lot.status === 'open')) return;
+  state.hostId = cr; state.epoch = (state.epoch || 0) + 1; state.handoff = { to: cr, from: me.id, at: now };
+  const ct = teamById(cr); if (ct) { ct.offSince = null; if (ct.auto) E.setAuto(ct, false); }
+  if (state.log) E.addLog(state, `${(ct || {}).coach || 'O criador'} voltou a conduzir a sala`);
+  state.v++; state.hostNow = Date.now(); if (ch) ch.send('state', strip(state));
+  isHost = false; stopHostLoops(); offset = 0; lastSeen = Date.now(); creatorBackAt = 0;
+  toast('O criador da sala voltou: ele está conduzindo de novo'); render();
+}
+// recebe a sala de volta: ajusta os relógios para o meu e passa a conduzir
+function becomeHost(p) {
+  const off = p.hostNow - Date.now(), now = Date.now();
+  state = p; setBase(p.settings && p.settings.base);
+  const sh = v => (typeof v === 'number' && v > 1e12) ? v - off : v;
+  if (state.lot) { state.lot.endsAt = Math.max(sh(state.lot.endsAt), now + 4000); state.lot.closedAt = sh(state.lot.closedAt); state.lot.openAt = sh(state.lot.openAt); }
+  if (state.cup && state.cup.live) { state.cup.live.at = sh(state.cup.live.at); state.cup.live.endAt = sh(state.cup.live.endAt); }
+  state.lineupEndsAt = sh(state.lineupEndsAt); state.prepEndsAt = sh(state.prepEndsAt);
+  if (state.tr) state.tr.offers.forEach(o => { if (o.botAt) o.botAt = sh(o.botAt); });
+  state.teams.forEach(t => { if (t.offSince) t.offSince = sh(t.offSince); });
+  state.seen = {}; state.teams.forEach(t => state.seen[t.id] = now); state._ai = {}; delete state.handoff;
+  isHost = true; offset = 0; quietUntil = 0; clearInterval(joinIv); joinIv = null;
+  try { localStorage.setItem('acabou-member-' + code, me.id); } catch (e) {}
+  startHostLoops(); publish(); toast('Você voltou a conduzir a sala');
 }
 // Anfitrião substituto: se o anfitrião some, o primeiro técnico conectado da lista assume a sala
 function takeOver() {
@@ -124,12 +165,14 @@ function takeOver() {
 }
 setInterval(() => {
   if (isHost || !state || !ch || !code || pendingResume || !navigator.onLine) return;
-  const silent = Date.now() - lastSeen; if (silent < 9000) return;
+  // leilão, trocas e tática têm relógio: 12 s sem sinal; campeonato, lobby e fim: 40 s (o anfitrião pode só ter trocado de app)
+  const crit = ['auction', 'trades', 'lineup'].includes(state.phase), wait = crit ? 12000 : 40000;
+  const silent = Date.now() - lastSeen; if (silent < wait) return;
   const humans = state.teams.filter(t => !t.bot && !t.auto && !t.offSince && t.id !== state.hostId);
   const rank = humans.findIndex(t => t.id === me.id); if (rank < 0) return;
   // só assume se tiver sinal de que a própria conexão está boa (ou se não houver mais ninguém)
   if (humans.length > 1 && Date.now() - othersSeenAt > 9000) return;
-  if (silent > 9000 + rank * 6000) takeOver();
+  if (silent > wait + rank * 6000) takeOver();
 }, 1000);
 function note(id, msg) { state.notes = state.notes || {}; state.notes[id] = { m: msg, at: Date.now() }; }
 let lastNoteAt = 0;
@@ -199,7 +242,14 @@ function presenceCheck(now) {
 }
 function hostLoop() {
   if (!state) return;
-  const now = Date.now(); let changed = presenceCheck(now);
+  const now = Date.now();
+  // o navegador congelou esta aba (app em segundo plano): escuta 4 s antes de retomar, para ver se outro técnico assumiu
+  if (lastLoopAt && now - lastLoopAt > 5000) { quietUntil = now + 4000; state.seen = state.seen || {}; state.teams.forEach(t => { state.seen[t.id] = now; }); }
+  lastLoopAt = now;
+  if (now < quietUntil) return;
+  maybeHandBack(now);
+  if (!isHost) return;
+  let changed = presenceCheck(now);
   try { localStorage.setItem('acabou-alive-' + code, String(now)); } catch (e) {}
   if (state.phase === 'auction') changed = E.tickAuction(state, now) || changed;
   else if (state.phase === 'cup') changed = E.tickLive(state, now) || changed;
@@ -210,10 +260,20 @@ function hostLoop() {
   }
   if (changed) publish();
 }
+let tickWorker = null;
 function startHostLoops() {
-  clearInterval(loopIv); clearInterval(hbIv);
-  loopIv = setInterval(hostLoop, 200); hbIv = setInterval(heartbeat, 2000);
+  clearInterval(loopIv); clearInterval(hbIv); lastLoopAt = 0;
+  if (!tickWorker) {
+    try {
+      const src = 'let a=null,b=null;onmessage=e=>{clearInterval(a);clearInterval(b);if(e.data==="go"){a=setInterval(()=>postMessage("loop"),200);b=setInterval(()=>postMessage("hb"),2000);}}';
+      tickWorker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      tickWorker.onmessage = e => { if (!isHost) return; if (e.data === 'loop') hostLoop(); else heartbeat(); };
+    } catch (e) { tickWorker = null; }
+  }
+  if (tickWorker) tickWorker.postMessage('go');
+  else { loopIv = setInterval(hostLoop, 200); hbIv = setInterval(heartbeat, 2000); }
 }
+function stopHostLoops() { clearInterval(loopIv); clearInterval(hbIv); if (tickWorker) tickWorker.postMessage('stop'); }
 async function ensureLobby() {
   if (lobbyCh) return;
   try {
@@ -234,7 +294,7 @@ async function createRoom() {
   const s = ui.settings;
   const settings = { budget: +s.budget, max: +s.max, format: s.format, speed: s.speed, hideOvr: s.hide === '1', pub: s.pub === '1', base: s.base, order: s.order, trades: s.trades === '1' };
   setBase(settings.base);
-  state = E.newRoomState(code, me, settings); isHost = true;
+  state = E.newRoomState(code, me, settings); state.creatorId = me.id; isHost = true;
   try { ch = await openChannel('room-' + code, onMsg); } catch (e) { toast(e.message); state = null; isHost = false; return; }
   try { history.replaceState(null, '', '?sala=' + code); } catch (e) {}
   try { localStorage.setItem('acabou-member-' + code, me.id); } catch (e) {}
@@ -425,7 +485,7 @@ function renderLobby() {
   const s = state.settings;
   $('#rulebook').onclick = showRules;
   $('#lobby-record').innerHTML = recordHTML();
-  const nT = state.teams.length, poolEst = Math.ceil(nT * 1.5) + 1 + Math.ceil(nT * 12.5);
+  const nT = state.teams.length, poolEst = E.buildPool(nT, s.order === 'setor').length;
   $('#rules').innerHTML = `<b>Pote desta partida:</b> ${poolEst} jogadores sorteados para ${nT * 11} vagas.<br><b>Regras da sala:</b> base ${BASE_NAMES[s.base] || 'Europa'} · orçamento ${fmt(s.budget)} · ${{ liga:'pontos corridos', ligafinal:'pontos corridos + finais', mata:'mata-mata', grupos:'grupos + mata-mata' }[s.format]} · ${s.trades ? 'com janela de trocas · ' : ''}leilão ${s.order === 'setor' ? 'por setor, ' : ''}${s.speed === 'rapido' ? 'rápido' : 'normal'} · overall ${s.hideOvr ? 'escondido' : 'visível'} · até ${s.max} técnicos`;
   $('#plist').innerHTML = state.teams.map(t => `<div class="prow2">
       <span class="dot" style="background:${t.color};width:14px;height:14px"></span>
@@ -512,13 +572,13 @@ function renderAuction() {
             <div class="timer"><div class="bar" id="l-bar"></div></div>
             <div class="call" id="l-call"></div>
             <div id="bidzone">
-              <div class="bids four">
+              <div class="bids three">
                 <button class="bid" data-inc="1">+1<small></small></button>
                 <button class="bid" data-inc="5">+5<small></small></button>
                 <button class="bid" data-inc="10">+10<small></small></button>
-                <button class="bid max" id="l-max">Máx.<small></small></button>
               </div>
               <div class="custom"><input type="number" id="l-custom" min="1" placeholder="Valor em R$"><button class="ghost" id="l-send">Dar lance</button><button class="pass" id="l-pass">Passar</button></div>
+              <div class="maxrow"><button class="bid max" id="l-max">Máx.<small></small></button><span>Lance máximo: pede confirmação</span></div>
             </div>
             <div class="hint" id="l-hint"></div>
             ${reactBar()}
@@ -545,9 +605,9 @@ function renderAuction() {
       </div>
     </div>`;
     app.querySelectorAll('.bid[data-inc]').forEach(b => b.onclick = () => bidInc(+b.dataset.inc));
-    $('#l-max').onclick = () => { const mt = myTeam(); if (mt) bidAmount(E.maxAllowed(mt)); };
+    $('#l-max').onclick = maxBid;
     $('#l-pass').onclick = () => state.lot && act({ type: 'pass', lotNo: state.lot.no });
-    $('#l-send').onclick = () => { const v = parseInt($('#l-custom').value, 10); if (v > 0) { bidAmount(v); $('#l-custom').value = ''; } };
+    $('#l-send').onclick = () => { const v = parseInt($('#l-custom').value, 10); if (v > 0 && confirmBig(v, 'send')) $('#l-custom').value = ''; };
     $('#l-custom').addEventListener('keydown', e => { if (e.key === 'Enter') $('#l-send').click(); });
     $('#ff').onclick = () => { if (isHost) { E.skipToEnd(state, Date.now()); publish(); } };
     const mt = myTeam();
@@ -583,7 +643,11 @@ function renderAuction() {
     const can = mt && lot.status === 'open' && !lot.auto && E.needFor(state, mt, p) && lot.leader !== mt.id;
     const lim = mt ? E.maxAllowed(mt) : 0, base = lot.leader ? lot.price : 0, mn = (mt && lot.status === 'open') ? E.minBid(state, mt) : 1;
     app.querySelectorAll('.bid[data-inc]').forEach(b => { const amt = Math.max(mn, base + +b.dataset.inc); b.querySelector('small').textContent = fmt(amt); b.disabled = !can || amt > lim; });
+    const armed = ui.arm && ui.arm.lot === lot.no && ui.arm.src === 'max' && Date.now() < ui.arm.until && ui.arm.amount === lim;
+    $('#l-max').classList.toggle('armed', !!armed); $('#l-max').firstChild.textContent = armed ? 'Confirmar?' : 'Máx.';
     $('#l-max small').textContent = fmt(lim); $('#l-max').disabled = !can || lim < mn;
+    const armS = ui.arm && ui.arm.lot === lot.no && ui.arm.src === 'send' && Date.now() < ui.arm.until;
+    $('#l-send').classList.toggle('armed', !!armS); $('#l-send').textContent = armS ? 'Confirmar ' + fmt(ui.arm.amount) + '?' : 'Dar lance';
     $('#l-pass').disabled = !can || (lot.passed || []).includes(me.id);
     $('#l-send').disabled = !can; $('#l-custom').disabled = !can;
     $('#bidzone').style.display = mt ? '' : 'none';
@@ -637,6 +701,21 @@ function bidInc(inc) {
   const lot = state && state.lot, mt = myTeam(); if (!lot || !mt) return;
   bidAmount(Math.max(E.minBid(state, mt), (lot.leader ? lot.price : 0) + inc));
 }
+// lance alto pede confirmação: o primeiro toque só arma, o segundo (em até 3 s, mesmo lote e mesmo valor) dá o lance
+const ARM_MS = 3000;
+function confirmBig(amount, src) {
+  const lot = state && state.lot, mt = myTeam(); if (!lot || !mt || lot.status !== 'open') return false;
+  const lim = E.maxAllowed(mt), big = src === 'max' || amount >= Math.max((lot.leader ? lot.price : 0) + 11, Math.ceil(lim * 0.5));
+  if (!big) { bidAmount(amount); return true; }
+  const a = ui.arm;
+  if (a && a.lot === lot.no && a.src === src && a.amount === amount && Date.now() < a.until) { ui.arm = null; bidAmount(amount); return true; }
+  if (amount > lim) { toast('Acima do seu teto: ' + fmt(lim)); return false; }
+  ui.arm = { lot: lot.no, src, amount, until: Date.now() + ARM_MS };
+  setTimeout(() => { if (ui.arm && Date.now() >= ui.arm.until) { ui.arm = null; if (view === 'auction') renderAuction(); } }, ARM_MS + 50);
+  if (view === 'auction') renderAuction();
+  return false;
+}
+function maxBid() { const mt = myTeam(); if (mt) confirmBig(E.maxAllowed(mt), 'max'); }
 function bidAmount(amount) {
   const lot = state && state.lot, mt = myTeam(); if (!lot || !mt || lot.status !== 'open') return;
   if (amount > E.maxAllowed(mt)) { toast('Acima do seu teto: ' + fmt(E.maxAllowed(mt))); return; }
@@ -648,7 +727,7 @@ document.addEventListener('keydown', e => {
   if (!state || state.phase !== 'auction' || ['INPUT', 'SELECT'].includes(e.target.tagName)) return;
   const m = { '1': 1, '2': 5, '3': 10 }[e.key];
   if (m) { e.preventDefault(); bidInc(m); }
-  else if (e.key === '4') { const mt = myTeam(); if (mt) bidAmount(E.maxAllowed(mt)); }
+  else if (e.key === '4') maxBid();
   else if ((e.key === 'p' || e.key === 'P') && state.lot) act({ type: 'pass', lotNo: state.lot.no });
 });
 // timer suave
@@ -1238,4 +1317,4 @@ let resumeHost = false; try { const sv = JSON.parse(localStorage.getItem('acabou
 if (q && resumeHost) joinRoom(q, true);
 else if (q) { render(); askName(() => joinRoom(q, true)); }
 else render();
-window.__dbg = { get state() { return state; }, get isHost() { return isHost; }, E };
+window.__dbg = { get state() { return state; }, get isHost() { return isHost; }, E, freeze: ms => { const t = Date.now() + ms; while (Date.now() < t) {} } };

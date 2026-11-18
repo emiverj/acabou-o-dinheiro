@@ -136,11 +136,8 @@ export const fieldCount = (state, t) => t.squad.filter(id => !isGK(getP(state, i
 export function needFor(state, t, p) { return isGK(p) ? !hasGK(state, t) : fieldCount(state, t) < 10; }
 export const maxAllowed = t => slots(t) > 0 ? t.budget - (slots(t) - 1) : 0;
 // piso para craques: 85+ = 5% do orçamento, 89+ = 10% (ex.: R$ 5 e R$ 10 com R$ 100)
-export function floorFor(state, p) {
-  const b = state.settings.budget;
-  const [t1, t2] = tiersOf(state.settings.base);
-  return p.o >= t2 ? Math.round(b * 0.10) : p.o >= t1 ? Math.round(b * 0.05) : 1;
-}
+// lance mínimo de um jogador: R$ 1 para todos (o piso dos craques foi tirado a pedido da galera)
+export function floorFor(state, p) { return 1; }
 // menor lance válido deste time no lote atual
 export function minBid(state, t) {
   const lot = state.lot, p = PLAYERS[lot.pid];
@@ -575,7 +572,7 @@ export function buildPool(nTeams, bySector) {
     return strat(gks, Math.ceil(nTeams * 1.5) + 1).concat(...[1, 2, 3].map(l => strat(fields.filter(i => lineOf(PLAYERS[i]) === l), Math.ceil(nTeams * q[l] * 1.3))));
   }
   // leilão sorteado: o pote também vem equilibrado entre defesa, meio e ataque (na proporção das formações)
-  const q = { 1: 4, 2: 3.6, 3: 2.4 };
+  const q = { 1: 4.4, 2: 4.2, 3: 3.8 };
   return strat(gks, Math.ceil(nTeams * 1.5) + 1).concat(...[1, 2, 3].map(l => strat(fields.filter(i => lineOf(PLAYERS[i]) === l), Math.ceil(nTeams * q[l] * 1.25))));
 }
 // quantos jogadores daquela linha o time ainda quer, pela formação
@@ -590,7 +587,7 @@ export function startAuction(state) {
   const pool = buildPool(state.teams.length, state.settings.order === 'setor');
   state.sector = state.settings.order === 'setor' ? 0 : null;
   state.poolSize = pool.length; state.poolIds = pool.slice();
-  state.pool = pool; state.unsold = []; state.phase = 'auction'; state.lotNo = 0; state.log = []; state.history = []; state.penal = {}; state.base = {};
+  state.pool = pool; state.unsold = []; state.bag = []; state.lastLines = []; state.phase = 'auction'; state.lotNo = 0; state.log = []; state.history = []; state.penal = {}; state.base = {};
   state.teams.forEach(t => { t.budget = state.settings.budget; t.squad = []; t.lineup = Array(11).fill(null); t.ready = false; t.paid = {}; });
   if (state.teams.some(t => t.bot)) state.teams.forEach(t => { if (t.bot) t.formation = pick(FORMATION_NAMES); });
   const ovr = PLAYERS.map(p => p.o); state.lo = Math.min(...ovr); state.hi = Math.max(...ovr);
@@ -635,22 +632,21 @@ export function chooseLot(state, now) {
       if (state.sector < 4) addLog(state, `Agora é a vez dos ${SECTORS[state.sector][0].toLowerCase()}`);
     }
   }
-  // leilão sorteado: escolhe primeiro o setor (defesa, meio, ataque) pelo que os times ainda precisam, evitando sequências do mesmo setor
+  // leilão sorteado: rodízio de setores. A cada 3 lotes de linha sai 1 defensor, 1 meia e 1 atacante, em ordem aleatória
+  // (nunca mais de 2 seguidos do mesmo setor). Setor que nenhum time precisa mais pela formação é pulado.
   if (state.sector == null && cands.length && !isGK(PLAYERS[cands[0]])) {
-    const last = state.lastLines || [];
-    const opts = [1, 2, 3].map(L => {
-      const c = cands.filter(id => lineOf(PLAYERS[id]) === L);
-      const need = state.teams.reduce((n, t) => n + lineNeed(state, t, L), 0);
-      let w = c.length ? need + 0.6 : 0;
-      if (last[0] === L) w *= last[1] === L ? 0.15 : 0.55;
-      return { L, c, w };
-    }).filter(o => o.w > 0);
-    const tot = opts.reduce((n, o) => n + o.w, 0);
-    if (tot > 0) { let r = Math.random() * tot; const o = opts.find(o => (r -= o.w) <= 0) || opts[opts.length - 1]; cands = o.c; }
+    const byL = L => cands.filter(id => lineOf(PLAYERS[id]) === L);
+    const need = L => state.teams.reduce((n, t) => n + lineNeed(state, t, L), 0);
+    if (!state.bag || !state.bag.length) state.bag = shuffle([1, 2, 3]);
+    let L = state.bag.find(l => byL(l).length && need(l) > 0) ?? state.bag.find(l => byL(l).length);
+    if (L == null) { state.bag = shuffle([1, 2, 3]); L = state.bag.find(l => byL(l).length && need(l) > 0) ?? state.bag.find(l => byL(l).length); }
+    // trava: nunca 3 lotes seguidos do mesmo setor (se houver outro setor com jogador no pote)
+    const r = state.lastLines || [];
+    if (L != null && r[0] === L && r[1] === L) { const alt = shuffle([1, 2, 3].filter(l => l !== L && byL(l).length)); if (alt.length) L = alt.find(l => need(l) > 0) ?? alt[0]; }
+    if (L != null) { if (state.bag.includes(L)) state.bag.splice(state.bag.indexOf(L), 1); cands = byL(L); state.lastLines = [L, ...r].slice(0, 2); }
   }
   if (!cands.length) return false;
-  const pid = pick(cands);
-  if (!isGK(PLAYERS[pid])) state.lastLines = [lineOf(PLAYERS[pid]), ...(state.lastLines || [])].slice(0, 2); state.pool.splice(state.pool.indexOf(pid), 1); state.lotNo++;
+  const pid = pick(cands); state.pool.splice(state.pool.indexOf(pid), 1); state.lotNo++;
   const sp = SPEEDS[state.settings.speed];
   state.lot = { no: state.lotNo, pid, price: 0, leader: null, endsAt: now + sp.open * 1000, status: 'open', passed: [], openAt: now };
   state._ai = {}; state.teams.forEach(t => { if (botLike(t)) state._ai[t.id] = { max: botMax(state, t, PLAYERS[pid]), next: now + rnd(900, 2600) }; });
